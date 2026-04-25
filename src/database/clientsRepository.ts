@@ -52,5 +52,25 @@ export function listClients(): Client[] {
     `);
     
      return rows as Client[];
-
     }
+
+export function listClientsForToday(): Client[] {
+    const today = new Date().toISOString().split('T')[0];
+
+    const rows = database.getAllSync<any>(`
+        SELECT
+            id,
+            name,
+            phone,
+            last_visit as lastVisit,
+            recurrence_days as recurrenceDays,
+            next_visit as nextVisit,
+            notes,
+            created_at as createdAt
+        FROM clients
+        WHERE next_visit <= ?
+        ORDER BY next_visit ASC;
+    `, [today]);
+     
+     return rows as Client[];
+}    

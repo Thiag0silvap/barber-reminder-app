@@ -4,16 +4,24 @@ import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View } from 'reac
 import { createClient, listClients } from '@/src/database/clientsRepository';
 import { Client } from '@/src/types/Client';
 
+import { listClientsForToday } from '@/src/database/clientsRepository';
+
 export default function HomeScreen() {
   const [clients, setClients] = useState<Client[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [lastVisit, setLastVisit] = useState('');
   const [recurrenceDays, setRecurrenceDays] = useState('');
+  const [clientsToday, setClientsToday] = useState<Client[]>([])
 
   function loadClients() {
     const data = listClients();
     setClients(data);
+  }
+
+  function loadClientsToday() {
+    const data = listClientsForToday();
+    setClientsToday(data)
   }
 
   function calculateNextVisit(lastVisitDate: string, days: number) {
@@ -58,6 +66,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadClients();
+    loadClientsToday();
   }, []);
 
   return (
@@ -99,6 +108,22 @@ export default function HomeScreen() {
       />
 
       <Button title="Salvar cliente" onPress={handleSaveClient} />
+
+      <Text style={styles.subtitle}>Clientes para chamar hoje</Text>
+
+      <FlatList
+        data={clientsToday}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <View style={styles.clientCard}>
+            <Text style={styles.clientName}>{item.name}</Text>
+            <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
+            <Text style={styles.clientText}>
+              Próxima visita: {item.nextVisit}
+            </Text>
+          </View>
+        )}
+      />
 
       <Text style={styles.subtitle}>Clientes cadastrados</Text>
 
