@@ -1,98 +1,150 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { createClient, listClients } from '@/src/database/clientsRepository';
+import { Client } from '@/src/types/Client';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [clients, setClients] = useState<Client[]>([]);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [lastVisit, setLastVisit] = useState('');
+  const [recurrenceDays, setRecurrenceDays] = useState('');
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  function loadClients() {
+    const data = listClients();
+    setClients(data);
+  }
+
+  function calculateNextVisit(lastVisitDate: string, days: number) {
+    const date = new Date(lastVisitDate);
+    date.setDate(date.getDate() + days);
+
+    return date.toISOString().split('T')[0];
+  }
+
+  function handleSaveClient() {
+    if (!name || !phone || !lastVisit || !recurrenceDays) {
+      Alert.alert('Atenção', 'Preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    const recurrence = Number(recurrenceDays);
+
+    if (Number.isNaN(recurrence) || recurrence <= 0) {
+      Alert.alert('Atenção', 'Informe uma recorrência válida.');
+      return;
+    }
+
+    const nextVisit = calculateNextVisit(lastVisit, recurrence);
+
+    createClient({
+      name,
+      phone,
+      lastVisit,
+      recurrenceDays: recurrence,
+      nextVisit,
+    });
+
+    setName('');
+    setPhone('');
+    setLastVisit('');
+    setRecurrenceDays('');
+
+    loadClients();
+
+    Alert.alert('Sucesso', 'Cliente cadastrado com sucesso.');
+  }
+
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Barber Reminder</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Nome do cliente"
+        value={name}
+        onChangeText={setName}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="WhatsApp"
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Última visita: 2026-04-24"
+        value={lastVisit}
+        onChangeText={setLastVisit}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Recorrência em dias: 20"
+        value={recurrenceDays}
+        onChangeText={setRecurrenceDays}
+        keyboardType="numeric"
+      />
+
+      <Button title="Salvar cliente" onPress={handleSaveClient} />
+
+      <Text style={styles.subtitle}>Clientes cadastrados</Text>
+
+      <FlatList
+        data={clients}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <View style={styles.clientCard}>
+            <Text style={styles.clientName}>{item.name}</Text>
+            <Text>WhatsApp: {item.phone}</Text>
+            <Text>Última visita: {item.lastVisit}</Text>
+            <Text>Próxima visita: {item.nextVisit}</Text>
+            <Text>Recorrência: {item.recurrenceDays} dias</Text>
+          </View>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    padding: 20,
+    gap: 12,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#999',
+    borderRadius: 8,
+    padding: 12,
+  },
+  clientCard: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 10,
+  },
+  clientName: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
