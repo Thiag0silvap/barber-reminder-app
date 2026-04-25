@@ -3,7 +3,7 @@ import { database } from "./connection";
 export function runMigrations() {
     database.execSync(`
         CREATE TABLE IF NOT EXISTS clients (
-            id INTERGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
             last_visit TEXT NOT NULL,
