@@ -67,6 +67,7 @@ export default function HomeScreen() {
       <TextInput
         style={styles.input}
         placeholder="Nome do cliente"
+        placeholderTextColor="#777"
         value={name}
         onChangeText={setName}
       />
@@ -74,6 +75,7 @@ export default function HomeScreen() {
       <TextInput
         style={styles.input}
         placeholder="WhatsApp"
+        placeholderTextColor="#777"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -82,6 +84,7 @@ export default function HomeScreen() {
       <TextInput
         style={styles.input}
         placeholder="Última visita: 2026-04-24"
+        placeholderTextColor="#777"
         value={lastVisit}
         onChangeText={setLastVisit}
       />
@@ -89,6 +92,7 @@ export default function HomeScreen() {
       <TextInput
         style={styles.input}
         placeholder="Recorrência em dias: 20"
+        placeholderTextColor="#777"
         value={recurrenceDays}
         onChangeText={setRecurrenceDays}
         keyboardType="numeric"
@@ -104,10 +108,10 @@ export default function HomeScreen() {
         renderItem={({ item }) => (
           <View style={styles.clientCard}>
             <Text style={styles.clientName}>{item.name}</Text>
-            <Text>WhatsApp: {item.phone}</Text>
-            <Text>Última visita: {item.lastVisit}</Text>
-            <Text>Próxima visita: {item.nextVisit}</Text>
-            <Text>Recorrência: {item.recurrenceDays} dias</Text>
+            <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
+            <Text style={styles.clientText}>Última visita: {item.lastVisit}</Text>
+            <Text style={styles.clientText}>Próxima visita: {item.nextVisit}</Text>
+            <Text style={styles.clientText}>Recorrência: {item.recurrenceDays} dias</Text>
           </View>
         )}
       />
@@ -120,31 +124,43 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     gap: 12,
+    backgroundColor: '#f4f4f5',
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 18,
     fontWeight: '600',
     marginTop: 20,
+    color: '#111827',
   },
   input: {
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#999',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    padding: 14,
+    color: '#111827',
+    fontSize: 16,
   },
   clientCard: {
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 14,
     marginTop: 10,
   },
   clientName: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#111827',
   },
+  clientText: {
+    color: '#374151'
+  }
 });
