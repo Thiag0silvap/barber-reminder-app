@@ -5,6 +5,7 @@ import { createClient, listClients } from '@/src/database/clientsRepository';
 import { Client } from '@/src/types/Client';
 
 import { listClientsForToday } from '@/src/database/clientsRepository';
+import { openWhatsAppMessage } from '@/src/services/whatsappService';
 
 export default function HomeScreen() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -121,6 +122,15 @@ export default function HomeScreen() {
             <Text style={styles.clientText}>
               Próxima visita: {item.nextVisit}
             </Text>
+            <Button
+                title="Chamar no WhatsApp"
+                onPress={() =>
+                  openWhatsAppMessage({
+                    phone: item.phone,
+                    clientName: item.name,
+                  })
+                }
+              />
           </View>
         )}
       />
