@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import {
   createClient,
@@ -13,6 +21,11 @@ import {
   getAppointmentsByClient,
 } from '@/src/database/appointmentsRepository';
 
+import {
+  calculateAverageRecurrence,
+  calculateNextSuggestedVisit,
+} from '@/src/utils/recurrenceUtils';
+
 import { openWhatsAppMessage } from '@/src/services/whatsappService';
 import { Client } from '@/src/types/Client';
 
@@ -24,19 +37,18 @@ export default function HomeScreen() {
   const [phone, setPhone] = useState('');
   const [firstVisitDate, setFirstVisitDate] = useState('');
 
-  function loadClients() {
-    const data = listClients();
-    setClients(data);
-  }
+  const [appointmentDates, setAppointmentDates] = useState<
+    Record<number, string>
+  >({});
 
-  function loadClientsToday() {
-    const data = listClientsForToday();
-    setClientsToday(data);
+  function loadClients() {
+    setClients(listClients());
+    setClientsToday(listClientsForToday());
   }
 
   function handleSaveClient() {
     if (!name || !phone || !firstVisitDate) {
-      Alert.alert('Atenção', 'Preencha nome, WhatsApp e data do atendimento.');
+      Alert.alert('Atenção', 'Preencha todos os campos.');
       return;
     }
 
@@ -58,135 +70,215 @@ export default function HomeScreen() {
     setFirstVisitDate('');
 
     loadClients();
-    loadClientsToday();
 
-    Alert.alert('Sucesso', 'Cliente cadastrado com atendimento inicial.');
+    Alert.alert('Cliente cadastrado com sucesso');
   }
 
   function handleRegisterAppointment(client: Client) {
-    const today = new Date().toISOString().split('T')[0];
+    const visitDate = appointmentDates[client.id];
+
+    if (!visitDate) {
+      Alert.alert('Informe a data do atendimento');
+      return;
+    }
 
     createAppointment({
       clientId: client.id,
-      visitDate: today,
+      visitDate,
     });
 
-    updateClientVisit(client.id, today, client.recurrenceDays, client.nextVisit);
+    const history = getAppointmentsByClient(client.id);
+
+    const recurrence = calculateAverageRecurrence(history);
+
+    const nextVisit = recurrence
+      ? calculateNextSuggestedVisit(visitDate, recurrence)
+      : null;
+
+    updateClientVisit(client.id, visitDate, recurrence, nextVisit);
+
+    setAppointmentDates((prev) => ({
+      ...prev,
+      [client.id]: '',
+    }));
 
     loadClients();
-    loadClientsToday();
 
-    Alert.alert('Sucesso', 'Atendimento registrado com sucesso.');
+    Alert.alert('Atendimento registrado com sucesso');
   }
 
   function handleShowHistory(client: Client) {
     const history = getAppointmentsByClient(client.id);
 
     if (!history.length) {
-      Alert.alert('Histórico vazio', 'Este cliente ainda não possui atendimentos.');
+      Alert.alert('Sem histórico ainda');
       return;
     }
 
-    const message = history.map((item) => `• ${item.visitDate}`).join('\n');
-
-    Alert.alert(`Histórico de ${client.name}`, message);
+    Alert.alert(
+      `Histórico de ${client.name}`,
+      history.map((h) => h.visitDate).join('\n')
+    );
   }
 
   useEffect(() => {
     loadClients();
-    loadClientsToday();
   }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Barber Reminder</Text>
+      <Text style={styles.title}>Barber Reminder ✂️</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Nome do cliente"
-        placeholderTextColor="#777"
-        value={name}
-        onChangeText={setName}
-      />
+      {/* RESUMO */}
+      <View style={styles.summaryContainer}>
+        <SummaryCard title="Para chamar hoje" value={clientsToday.length} />
+        <SummaryCard title="Clientes totais" value={clients.length} />
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="WhatsApp"
-        placeholderTextColor="#777"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-      />
+      {/* NOVO CLIENTE */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Novo cliente</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Data do atendimento: 2026-04-24"
-        placeholderTextColor="#777"
-        value={firstVisitDate}
-        onChangeText={setFirstVisitDate}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Nome"
+          value={name}
+          onChangeText={setName}
+        />
 
-      <Button title="Salvar cliente" onPress={handleSaveClient} />
+        <TextInput
+          style={styles.input}
+          placeholder="WhatsApp"
+          value={phone}
+          onChangeText={setPhone}
+        />
 
-      <Text style={styles.subtitle}>Clientes para chamar hoje</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Data do primeiro atendimento"
+          value={firstVisitDate}
+          onChangeText={setFirstVisitDate}
+        />
+
+        <PrimaryButton title="Cadastrar cliente" onPress={handleSaveClient} />
+      </View>
+
+      {/* CLIENTES PARA HOJE */}
+      <Text style={styles.sectionTitle}>Clientes para chamar hoje</Text>
 
       <FlatList
         data={clientsToday}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
-          <View style={styles.clientCard}>
-            <Text style={styles.clientName}>{item.name}</Text>
-            <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
-            <Text style={styles.clientText}>
-              Próxima sugestão: {item.nextVisit ?? 'Aguardando histórico'}
-            </Text>
-
-            <Button
-              title="Chamar no WhatsApp"
-              onPress={() =>
-                openWhatsAppMessage({
-                  phone: item.phone,
-                  clientName: item.name,
-                  recurrenceDays: item.recurrenceDays ?? 0,
-                })
-              }
-            />
-          </View>
+          <ClientCard
+            client={item}
+            appointmentDate={appointmentDates[item.id] ?? ''}
+            onChangeAppointmentDate={(value: string) =>
+              setAppointmentDates((prev) => ({
+                ...prev,
+                [item.id]: value,
+              }))
+            }
+            onWhatsApp={() =>
+              openWhatsAppMessage({
+                phone: item.phone,
+                clientName: item.name,
+                recurrenceDays: item.recurrenceDays ?? 0,
+              })
+            }
+            onRegister={() => handleRegisterAppointment(item)}
+            onHistory={() => handleShowHistory(item)}
+          />
         )}
       />
 
-      <Text style={styles.subtitle}>Clientes cadastrados</Text>
+      {/* TODOS CLIENTES */}
+      <Text style={styles.sectionTitle}>Todos os clientes</Text>
 
       <FlatList
         data={clients}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
-          <View style={styles.clientCard}>
-            <Text style={styles.clientName}>{item.name}</Text>
-            <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
-            <Text style={styles.clientText}>
-              Último atendimento: {item.lastVisit ?? 'Não informado'}
-            </Text>
-            <Text style={styles.clientText}>
-              Recorrência estimada:{' '}
-              {item.recurrenceDays ? `${item.recurrenceDays} dias` : 'Aguardando histórico'}
-            </Text>
-            <Text style={styles.clientText}>
-              Próxima sugestão: {item.nextVisit ?? 'Aguardando histórico'}
-            </Text>
-
-            <Button
-              title="Registrar atendimento"
-              onPress={() => handleRegisterAppointment(item)}
-            />
-
-            <Button
-              title="Ver histórico"
-              onPress={() => handleShowHistory(item)}
-            />
-          </View>
+          <ClientCard
+            client={item}
+            appointmentDate={appointmentDates[item.id] ?? ''}
+            onChangeAppointmentDate={(value: string) =>
+              setAppointmentDates((prev) => ({
+                ...prev,
+                [item.id]: value,
+              }))
+            }
+            onWhatsApp={() =>
+              openWhatsAppMessage({
+                phone: item.phone,
+                clientName: item.name,
+                recurrenceDays: item.recurrenceDays ?? 0,
+              })
+            }
+            onRegister={() => handleRegisterAppointment(item)}
+            onHistory={() => handleShowHistory(item)}
+          />
         )}
       />
+    </View>
+  );
+}
+
+function SummaryCard({ title, value }: any) {
+  return (
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{title}</Text>
+    </View>
+  );
+}
+
+function PrimaryButton({ title, onPress }: any) {
+  return (
+    <TouchableOpacity style={styles.primaryButton} onPress={onPress}>
+      <Text style={styles.primaryButtonText}>{title}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ClientCard({
+  client,
+  appointmentDate,
+  onChangeAppointmentDate,
+  onWhatsApp,
+  onRegister,
+  onHistory,
+}: any) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.clientName}>{client.name}</Text>
+
+      <Text>Último corte: {client.lastVisit ?? '-'}</Text>
+
+      <Text>
+        Recorrência:{' '}
+        {client.recurrenceDays
+          ? `${client.recurrenceDays} dias`
+          : 'calculando...'}
+      </Text>
+
+      <Text>
+        Próxima sugestão:{' '}
+        {client.nextVisit ?? 'aguardando histórico suficiente'}
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Data do novo atendimento"
+        value={appointmentDate}
+        onChangeText={onChangeAppointmentDate}
+      />
+
+      <View style={styles.actions}>
+        <PrimaryButton title="WhatsApp" onPress={onWhatsApp} />
+        <PrimaryButton title="Registrar" onPress={onRegister} />
+        <PrimaryButton title="Histórico" onPress={onHistory} />
+      </View>
     </View>
   );
 }
@@ -195,45 +287,82 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    gap: 12,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: '#f8fafc',
   },
+
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
+    marginBottom: 20,
   },
-  subtitle: {
+
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginTop: 20,
-    color: '#111827',
+    marginVertical: 10,
   },
-  input: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    padding: 14,
-    color: '#111827',
-    fontSize: 16,
+
+  summaryContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
   },
-  clientCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+
+  summaryCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 20,
     borderRadius: 12,
-    padding: 14,
-    marginTop: 10,
-    gap: 6,
+    alignItems: 'center',
   },
-  clientName: {
-    fontSize: 16,
+
+  summaryValue: {
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#111827',
   },
-  clientText: {
-    color: '#374151',
+
+  summaryLabel: {
+    fontSize: 13,
+    color: '#555',
+  },
+
+  card: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 14,
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+
+  primaryButton: {
+    backgroundColor: '#111827',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+
+  clientName: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
   },
 });
