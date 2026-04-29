@@ -128,6 +128,7 @@ export default function HomeScreen() {
                   openWhatsAppMessage({
                     phone: item.phone,
                     clientName: item.name,
+                    recurrenceDays: item.recurrenceDays,
                   })
                 }
               />

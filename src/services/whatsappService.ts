@@ -1,28 +1,43 @@
 import { Alert, Linking } from 'react-native';
 
-type OpenWhatsAppParams = {
+type Params = {
   phone: string;
   clientName: string;
+  recurrenceDays: number;
 };
 
-function onlyNumbers(value: string) {
-  return value.replace(/\D/g, '');
+function formatBrazilianPhone(value: string) {
+  const numbers = value.replace(/\D/g, '');
+
+  if (numbers.startsWith('55') && numbers.length >= 12) {
+    return numbers;
+  }
+
+  if (numbers.length === 10 || numbers.length === 11) {
+    return `55${numbers}`;
+  }
+
+  return numbers;
 }
 
 export async function openWhatsAppMessage({
   phone,
   clientName,
-}: OpenWhatsAppParams) {
-  const cleanPhone = onlyNumbers(phone);
+  recurrenceDays,
+}: Params) {
+  const formattedPhone = formatBrazilianPhone(phone);
 
-  if (!cleanPhone) {
-    Alert.alert('Atenção', 'Telefone inválido para abrir o WhatsApp.');
+  if (!formattedPhone || formattedPhone.length < 12) {
+    Alert.alert(
+      'Atenção',
+      'Informe o telefone com DDD. Exemplo: 85999999999.'
+    );
     return;
   }
 
-  const message = `Olá ${clientName}, tudo bem? Já está chegando o período do seu corte. Gostaria de agendar um horário?`;
+  const message = `Olá ${clientName}, tudo bem? Vi aqui que já está próximo do período do seu corte. Gostaria de agendar um horário?`;
 
-  const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+  const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
   await Linking.openURL(url);
 }
