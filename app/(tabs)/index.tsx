@@ -8,7 +8,11 @@ import {
   updateClientVisit,
 } from '@/src/database/clientsRepository';
 
-import { createAppointment } from '@/src/database/appointmentsRepository';
+import {
+  createAppointment,
+  getAppointmentsByClient,
+} from '@/src/database/appointmentsRepository';
+
 import { openWhatsAppMessage } from '@/src/services/whatsappService';
 import { Client } from '@/src/types/Client';
 
@@ -18,8 +22,7 @@ export default function HomeScreen() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [lastVisit, setLastVisit] = useState('');
-  const [recurrenceDays, setRecurrenceDays] = useState('');
+  const [firstVisitDate, setFirstVisitDate] = useState('');
 
   function loadClients() {
     const data = listClients();
@@ -31,62 +34,62 @@ export default function HomeScreen() {
     setClientsToday(data);
   }
 
-  function calculateNextVisit(lastVisitDate: string, days: number) {
-    const date = new Date(lastVisitDate);
-    date.setDate(date.getDate() + days);
-
-    return date.toISOString().split('T')[0];
-  }
-
   function handleSaveClient() {
-    if (!name || !phone || !lastVisit || !recurrenceDays) {
-      Alert.alert('Atenção', 'Preencha todos os campos obrigatórios.');
+    if (!name || !phone || !firstVisitDate) {
+      Alert.alert('Atenção', 'Preencha nome, WhatsApp e data do atendimento.');
       return;
     }
 
-    const recurrence = Number(recurrenceDays);
-
-    if (Number.isNaN(recurrence) || recurrence <= 0) {
-      Alert.alert('Atenção', 'Informe uma recorrência válida.');
-      return;
-    }
-
-    const nextVisit = calculateNextVisit(lastVisit, recurrence);
-
-    createClient({
+    const clientId = createClient({
       name,
       phone,
-      lastVisit,
-      recurrenceDays: recurrence,
-      nextVisit,
+      lastVisit: firstVisitDate,
+      recurrenceDays: null,
+      nextVisit: null,
+    });
+
+    createAppointment({
+      clientId,
+      visitDate: firstVisitDate,
     });
 
     setName('');
     setPhone('');
-    setLastVisit('');
-    setRecurrenceDays('');
+    setFirstVisitDate('');
 
     loadClients();
     loadClientsToday();
 
-    Alert.alert('Sucesso', 'Cliente cadastrado com sucesso.');
+    Alert.alert('Sucesso', 'Cliente cadastrado com atendimento inicial.');
   }
 
   function handleRegisterAppointment(client: Client) {
     const today = new Date().toISOString().split('T')[0];
-    const nextVisit = calculateNextVisit(today, client.recurrenceDays);
 
     createAppointment({
       clientId: client.id,
       visitDate: today,
     });
 
-    updateClientVisit(client.id, today, nextVisit);
+    updateClientVisit(client.id, today, client.recurrenceDays, client.nextVisit);
 
     loadClients();
     loadClientsToday();
 
     Alert.alert('Sucesso', 'Atendimento registrado com sucesso.');
+  }
+
+  function handleShowHistory(client: Client) {
+    const history = getAppointmentsByClient(client.id);
+
+    if (!history.length) {
+      Alert.alert('Histórico vazio', 'Este cliente ainda não possui atendimentos.');
+      return;
+    }
+
+    const message = history.map((item) => `• ${item.visitDate}`).join('\n');
+
+    Alert.alert(`Histórico de ${client.name}`, message);
   }
 
   useEffect(() => {
@@ -117,19 +120,10 @@ export default function HomeScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Última visita: 2026-04-24"
+        placeholder="Data do atendimento: 2026-04-24"
         placeholderTextColor="#777"
-        value={lastVisit}
-        onChangeText={setLastVisit}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Recorrência em dias: 20"
-        placeholderTextColor="#777"
-        value={recurrenceDays}
-        onChangeText={setRecurrenceDays}
-        keyboardType="numeric"
+        value={firstVisitDate}
+        onChangeText={setFirstVisitDate}
       />
 
       <Button title="Salvar cliente" onPress={handleSaveClient} />
@@ -143,7 +137,9 @@ export default function HomeScreen() {
           <View style={styles.clientCard}>
             <Text style={styles.clientName}>{item.name}</Text>
             <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
-            <Text style={styles.clientText}>Próxima visita: {item.nextVisit}</Text>
+            <Text style={styles.clientText}>
+              Próxima sugestão: {item.nextVisit ?? 'Aguardando histórico'}
+            </Text>
 
             <Button
               title="Chamar no WhatsApp"
@@ -151,7 +147,7 @@ export default function HomeScreen() {
                 openWhatsAppMessage({
                   phone: item.phone,
                   clientName: item.name,
-                  recurrenceDays: item.recurrenceDays,
+                  recurrenceDays: item.recurrenceDays ?? 0,
                 })
               }
             />
@@ -168,13 +164,25 @@ export default function HomeScreen() {
           <View style={styles.clientCard}>
             <Text style={styles.clientName}>{item.name}</Text>
             <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
-            <Text style={styles.clientText}>Última visita: {item.lastVisit}</Text>
-            <Text style={styles.clientText}>Próxima visita: {item.nextVisit}</Text>
-            <Text style={styles.clientText}>Recorrência: {item.recurrenceDays} dias</Text>
+            <Text style={styles.clientText}>
+              Último atendimento: {item.lastVisit ?? 'Não informado'}
+            </Text>
+            <Text style={styles.clientText}>
+              Recorrência estimada:{' '}
+              {item.recurrenceDays ? `${item.recurrenceDays} dias` : 'Aguardando histórico'}
+            </Text>
+            <Text style={styles.clientText}>
+              Próxima sugestão: {item.nextVisit ?? 'Aguardando histórico'}
+            </Text>
 
             <Button
               title="Registrar atendimento"
               onPress={() => handleRegisterAppointment(item)}
+            />
+
+            <Button
+              title="Ver histórico"
+              onPress={() => handleShowHistory(item)}
             />
           </View>
         )}
@@ -218,6 +226,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginTop: 10,
+    gap: 6,
   },
   clientName: {
     fontSize: 16,

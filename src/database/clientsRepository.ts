@@ -2,92 +2,95 @@ import { Client } from '../types/Client';
 import { database } from './connection';
 
 type CreateClientDTO = {
-    name: string;
-    phone: string;
-    lastVisit: string;
-    recurrenceDays: number;
-    nextVisit: string;
-    notes?: string;
+  name: string;
+  phone: string;
+  lastVisit?: string | null;
+  recurrenceDays?: number | null;
+  nextVisit?: string | null;
+  notes?: string;
 };
 
-export function createClient(data: CreateClientDTO) {
-    const statement = database.prepareSync(`
-        INSERT INTO clients (
-            name,
-            phone,
-            last_visit,
-            recurrence_days,
-            next_visit,
-            notes
-        ) VALUES (?, ?, ?, ?, ?, ?);
-    `);
+export function createClient(data: CreateClientDTO): number {
+  const result = database.runSync(
+    `
+    INSERT INTO clients (
+      name,
+      phone,
+      last_visit,
+      recurrence_days,
+      next_visit,
+      notes
+    ) VALUES (?, ?, ?, ?, ?, ?);
+    `,
+    [
+      data.name,
+      data.phone,
+      data.lastVisit ?? null,
+      data.recurrenceDays ?? null,
+      data.nextVisit ?? null,
+      data.notes ?? null,
+    ]
+  );
 
-    try {
-        statement.executeSync([
-            data.name,
-            data.phone,
-            data.lastVisit,
-            data.recurrenceDays,
-            data.nextVisit,
-            data.notes ?? null,
-        ]);
-    } finally {
-        statement.finalizeSync();
-    }
+  return result.lastInsertRowId;
 }
 
 export function listClients(): Client[] {
-    const rows = database.getAllSync(`
-        SELECT 
-            id,
-            name,
-            phone,
-            last_visit as lastVisit,
-            recurrence_days as recurrenceDays,
-            next_visit as nextVisit,
-            notes,
-            created_at as createdAt
-        FROM clients;
-        ORDER BY name ASC;
-    `);
-    
-     return rows as Client[];
-    }
+  return database.getAllSync(
+    `
+    SELECT
+      id,
+      name,
+      phone,
+      last_visit as lastVisit,
+      recurrence_days as recurrenceDays,
+      next_visit as nextVisit,
+      notes,
+      created_at as createdAt
+    FROM clients
+    ORDER BY name ASC;
+    `
+  ) as Client[];
+}
 
 export function listClientsForToday(): Client[] {
-    const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
 
-    const rows = database.getAllSync<any>(`
-        SELECT
-            id,
-            name,
-            phone,
-            last_visit as lastVisit,
-            recurrence_days as recurrenceDays,
-            next_visit as nextVisit,
-            notes,
-            created_at as createdAt
-        FROM clients
-        WHERE next_visit <= ?
-        ORDER BY next_visit ASC;
-    `, [today]);
-     
-     return rows as Client[];
-}    
+  return database.getAllSync(
+    `
+    SELECT
+      id,
+      name,
+      phone,
+      last_visit as lastVisit,
+      recurrence_days as recurrenceDays,
+      next_visit as nextVisit,
+      notes,
+      created_at as createdAt
+    FROM clients
+    WHERE next_visit IS NOT NULL
+      AND next_visit <= ?
+    ORDER BY next_visit ASC;
+    `,
+    [today]
+  ) as Client[];
+}
 
 export function updateClientVisit(
   clientId: number,
   lastVisit: string,
-  nextVisit: string
+  recurrenceDays: number | null,
+  nextVisit: string | null
 ) {
   database.runSync(
     `
     UPDATE clients
     SET
       last_visit = ?,
+      recurrence_days = ?,
       next_visit = ?
-    WHERE id = ?
+    WHERE id = ?;
     `,
-    [lastVisit, nextVisit, clientId]
+    [lastVisit, recurrenceDays, nextVisit, clientId]
   );
 }
