@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { createClient, listClients } from '@/src/database/clientsRepository';
-import { Client } from '@/src/types/Client';
+import {
+  createClient,
+  listClients,
+  listClientsForToday,
+  updateClientVisit,
+} from '@/src/database/clientsRepository';
 
-import { listClientsForToday } from '@/src/database/clientsRepository';
+import { createAppointment } from '@/src/database/appointmentsRepository';
 import { openWhatsAppMessage } from '@/src/services/whatsappService';
+import { Client } from '@/src/types/Client';
 
 export default function HomeScreen() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientsToday, setClientsToday] = useState<Client[]>([]);
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [lastVisit, setLastVisit] = useState('');
   const [recurrenceDays, setRecurrenceDays] = useState('');
-  const [clientsToday, setClientsToday] = useState<Client[]>([])
 
   function loadClients() {
     const data = listClients();
@@ -22,7 +28,7 @@ export default function HomeScreen() {
 
   function loadClientsToday() {
     const data = listClientsForToday();
-    setClientsToday(data)
+    setClientsToday(data);
   }
 
   function calculateNextVisit(lastVisitDate: string, days: number) {
@@ -61,8 +67,26 @@ export default function HomeScreen() {
     setRecurrenceDays('');
 
     loadClients();
+    loadClientsToday();
 
     Alert.alert('Sucesso', 'Cliente cadastrado com sucesso.');
+  }
+
+  function handleRegisterAppointment(client: Client) {
+    const today = new Date().toISOString().split('T')[0];
+    const nextVisit = calculateNextVisit(today, client.recurrenceDays);
+
+    createAppointment({
+      clientId: client.id,
+      visitDate: today,
+    });
+
+    updateClientVisit(client.id, today, nextVisit);
+
+    loadClients();
+    loadClientsToday();
+
+    Alert.alert('Sucesso', 'Atendimento registrado com sucesso.');
   }
 
   useEffect(() => {
@@ -119,19 +143,18 @@ export default function HomeScreen() {
           <View style={styles.clientCard}>
             <Text style={styles.clientName}>{item.name}</Text>
             <Text style={styles.clientText}>WhatsApp: {item.phone}</Text>
-            <Text style={styles.clientText}>
-              Próxima visita: {item.nextVisit}
-            </Text>
+            <Text style={styles.clientText}>Próxima visita: {item.nextVisit}</Text>
+
             <Button
-                title="Chamar no WhatsApp"
-                onPress={() =>
-                  openWhatsAppMessage({
-                    phone: item.phone,
-                    clientName: item.name,
-                    recurrenceDays: item.recurrenceDays,
-                  })
-                }
-              />
+              title="Chamar no WhatsApp"
+              onPress={() =>
+                openWhatsAppMessage({
+                  phone: item.phone,
+                  clientName: item.name,
+                  recurrenceDays: item.recurrenceDays,
+                })
+              }
+            />
           </View>
         )}
       />
@@ -148,6 +171,11 @@ export default function HomeScreen() {
             <Text style={styles.clientText}>Última visita: {item.lastVisit}</Text>
             <Text style={styles.clientText}>Próxima visita: {item.nextVisit}</Text>
             <Text style={styles.clientText}>Recorrência: {item.recurrenceDays} dias</Text>
+
+            <Button
+              title="Registrar atendimento"
+              onPress={() => handleRegisterAppointment(item)}
+            />
           </View>
         )}
       />
@@ -197,6 +225,6 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   clientText: {
-    color: '#374151'
-  }
+    color: '#374151',
+  },
 });

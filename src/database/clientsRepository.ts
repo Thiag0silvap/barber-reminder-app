@@ -74,3 +74,20 @@ export function listClientsForToday(): Client[] {
      
      return rows as Client[];
 }    
+
+export function updateClientVisit(
+  clientId: number,
+  lastVisit: string,
+  nextVisit: string
+) {
+  database.runSync(
+    `
+    UPDATE clients
+    SET
+      last_visit = ?,
+      next_visit = ?
+    WHERE id = ?
+    `,
+    [lastVisit, nextVisit, clientId]
+  );
+}
