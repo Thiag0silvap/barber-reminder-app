@@ -398,12 +398,15 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
         style={styles.keyboardView}>
         <SectionList
           sections={sections}
           keyExtractor={(item, index) => `${item.id}-${index}`}
           stickySectionHeadersEnabled={false}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
           ListHeaderComponent={
             <Header
@@ -816,7 +819,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: 180,
   },
   hero: {
     backgroundColor: palette.ink,
