@@ -77,12 +77,30 @@ type EditClientModalProps = {
   onSave: () => void;
 };
 
+type NewClientModalProps = {
+  visible: boolean;
+  name: string;
+  phone: string;
+  firstVisitDate: string;
+  onChangeName: (value: string) => void;
+  onChangePhone: (value: string) => void;
+  onChangeFirstVisitDate: (value: string) => void;
+  onUseToday: () => void;
+  onClose: () => void;
+  onSave: () => void;
+};
+
 type ClientDetailsModalProps = {
   visible: boolean;
   client: Client | null;
   appointments: Appointment[];
+  appointmentDate: string;
+  onChangeAppointmentDate: (value: string) => void;
+  onRegister: () => void;
+  onRegisterToday: () => void;
   onClose: () => void;
   onEdit: (client: Client) => void;
+  onDelete: (client: Client) => void;
   onWhatsApp: (client: Client) => void;
 };
 
@@ -143,10 +161,15 @@ function clientMatchesSearch(client: Client, searchTerm: string) {
     return true;
   }
 
-  return (
-    normalizeSearch(client.name).includes(normalizedTerm) ||
-    onlyNumbers(client.phone).includes(numericTerm)
-  );
+  const matchesName = normalizedTerm
+    ? normalizeSearch(client.name).includes(normalizedTerm)
+    : false;
+
+  const matchesPhone = numericTerm
+    ? onlyNumbers(client.phone).includes(numericTerm)
+    : false;
+
+  return matchesName || matchesPhone;
 }
 
 function maskDate(value: string) {
@@ -296,6 +319,7 @@ export default function HomeScreen() {
   const [phone, setPhone] = useState('');
   const [firstVisitDate, setFirstVisitDate] = useState(toBrazilianDate(getTodayDate()));
   const [searchTerm, setSearchTerm] = useState('');
+  const [isNewClientModalVisible, setIsNewClientModalVisible] = useState(false);
 
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [editName, setEditName] = useState('');
@@ -394,6 +418,7 @@ export default function HomeScreen() {
     setFirstVisitDate(toBrazilianDate(getTodayDate()));
 
     loadClients();
+    setIsNewClientModalVisible(false);
 
     Alert.alert('Cliente cadastrado', 'O primeiro atendimento já entrou no histórico.');
   }
@@ -568,16 +593,9 @@ export default function HomeScreen() {
             <Header
               clientsCount={clients.length}
               clientsTodayCount={clientsToday.length}
-              name={name}
-              phone={phone}
-              firstVisitDate={firstVisitDate}
               searchTerm={searchTerm}
-              onChangeName={setName}
-              onChangePhone={(value) => setPhone(maskPhone(value))}
-              onChangeFirstVisitDate={(value) => setFirstVisitDate(maskDate(value))}
               onChangeSearchTerm={setSearchTerm}
-              onUseToday={() => setFirstVisitDate(toBrazilianDate(getTodayDate()))}
-              onSave={handleSaveClient}
+              onOpenNewClient={() => setIsNewClientModalVisible(true)}
             />
           }
           renderSectionHeader={({ section }) => (
@@ -593,14 +611,6 @@ export default function HomeScreen() {
             <ClientCard
               client={item}
               isDue={dueClientIds.has(item.id)}
-              isPrioritySection={section.title === 'Prioridade de hoje'}
-              appointmentDate={appointmentDates[item.id] ?? ''}
-              onChangeAppointmentDate={(value: string) =>
-                setAppointmentDates((prev) => ({
-                  ...prev,
-                  [item.id]: maskDate(value),
-                }))
-              }
               onWhatsApp={() =>
                 openWhatsAppMessage({
                   phone: item.phone,
@@ -608,11 +618,7 @@ export default function HomeScreen() {
                   recurrenceDays: item.recurrenceDays ?? 0,
                 })
               }
-              onRegister={() => handleRegisterAppointment(item)}
-              onRegisterToday={() => handleRegisterToday(item)}
               onHistory={() => handleShowHistory(item)}
-              onEdit={() => handleOpenEditClient(item)}
-              onDelete={() => handleDeleteClient(item)}
             />
           )}
           renderSectionFooter={({ section }) =>
@@ -633,6 +639,18 @@ export default function HomeScreen() {
           }
         />
       </KeyboardAvoidingView>
+      <NewClientModal
+        visible={isNewClientModalVisible}
+        name={name}
+        phone={phone}
+        firstVisitDate={firstVisitDate}
+        onChangeName={setName}
+        onChangePhone={(value) => setPhone(maskPhone(value))}
+        onChangeFirstVisitDate={(value) => setFirstVisitDate(maskDate(value))}
+        onUseToday={() => setFirstVisitDate(toBrazilianDate(getTodayDate()))}
+        onClose={() => setIsNewClientModalVisible(false)}
+        onSave={handleSaveClient}
+      />
       <EditClientModal
         visible={!!editingClient}
         name={editName}
@@ -646,10 +664,37 @@ export default function HomeScreen() {
         visible={!!detailsClient}
         client={detailsClient}
         appointments={detailsAppointments}
+        appointmentDate={detailsClient ? appointmentDates[detailsClient.id] ?? '' : ''}
+        onChangeAppointmentDate={(value) => {
+          if (!detailsClient) {
+            return;
+          }
+
+          setAppointmentDates((prev) => ({
+            ...prev,
+            [detailsClient.id]: maskDate(value),
+          }));
+        }}
+        onRegister={() => {
+          if (detailsClient) {
+            handleRegisterAppointment(detailsClient);
+            handleCloseDetails();
+          }
+        }}
+        onRegisterToday={() => {
+          if (detailsClient) {
+            handleRegisterToday(detailsClient);
+            handleCloseDetails();
+          }
+        }}
         onClose={handleCloseDetails}
         onEdit={(client) => {
           handleCloseDetails();
           handleOpenEditClient(client);
+        }}
+        onDelete={(client) => {
+          handleCloseDetails();
+          handleDeleteClient(client);
         }}
         onWhatsApp={(client) =>
           openWhatsAppMessage({
@@ -666,29 +711,15 @@ export default function HomeScreen() {
 function Header({
   clientsCount,
   clientsTodayCount,
-  name,
-  phone,
-  firstVisitDate,
   searchTerm,
-  onChangeName,
-  onChangePhone,
-  onChangeFirstVisitDate,
   onChangeSearchTerm,
-  onUseToday,
-  onSave,
+  onOpenNewClient,
 }: {
   clientsCount: number;
   clientsTodayCount: number;
-  name: string;
-  phone: string;
-  firstVisitDate: string;
   searchTerm: string;
-  onChangeName: (value: string) => void;
-  onChangePhone: (value: string) => void;
-  onChangeFirstVisitDate: (value: string) => void;
   onChangeSearchTerm: (value: string) => void;
-  onUseToday: () => void;
-  onSave: () => void;
+  onOpenNewClient: () => void;
 }) {
   return (
     <>
@@ -724,59 +755,7 @@ function Header({
         />
       </View>
 
-      <View style={styles.formPanel}>
-        <View style={styles.panelHeader}>
-          <View style={styles.panelHeaderText}>
-            <Text style={styles.panelTitle}>Novo cliente</Text>
-            <Text style={styles.panelSubtitle}>
-              Cadastre a primeira visita. A recorrência nasce do histórico.
-            </Text>
-          </View>
-          <View style={styles.panelBadge}>
-            <Ionicons name="sparkles-outline" size={14} color={palette.brandDark} />
-            <Text style={styles.panelBadgeText}>Automático</Text>
-          </View>
-        </View>
-
-        <Field
-          icon="person-outline"
-          placeholder="Nome do cliente"
-          value={name}
-          onChangeText={onChangeName}
-        />
-        <Field
-          icon="logo-whatsapp"
-          placeholder="WhatsApp com DDD"
-          value={phone}
-          keyboardType="phone-pad"
-          maxLength={15}
-          onChangeText={onChangePhone}
-        />
-        <Field
-          icon="calendar-outline"
-          placeholder="Data do primeiro atendimento"
-          value={firstVisitDate}
-          keyboardType="number-pad"
-          maxLength={10}
-          onChangeText={onChangeFirstVisitDate}
-        />
-
-        <View style={styles.formActions}>
-          <PrimaryButton
-            icon="today-outline"
-            title="Hoje"
-            variant="secondary"
-            onPress={onUseToday}
-          />
-          <PrimaryButton
-            icon="add-circle-outline"
-            title="Cadastrar cliente"
-            onPress={onSave}
-          />
-        </View>
-      </View>
-
-      <View style={styles.searchPanel}>
+      <View style={styles.toolbarPanel}>
         <Field
           icon="search-outline"
           placeholder="Buscar cliente por nome ou WhatsApp"
@@ -784,6 +763,10 @@ function Header({
           onChangeText={onChangeSearchTerm}
           keyboardType="default"
         />
+        <Pressable style={styles.newClientButton} onPress={onOpenNewClient}>
+          <Ionicons name="add-circle-outline" size={20} color={palette.surface} />
+          <Text style={styles.newClientButtonText}>Novo cliente</Text>
+        </Pressable>
       </View>
     </>
   );
@@ -879,33 +862,25 @@ function PrimaryButton({
 
 function ClientCard({
   client,
-  appointmentDate,
   isDue,
-  isPrioritySection,
-  onChangeAppointmentDate,
   onWhatsApp,
-  onRegister,
-  onRegisterToday,
   onHistory,
-  onEdit,
-  onDelete,
 }: {
   client: Client;
-  appointmentDate: string;
   isDue: boolean;
-  isPrioritySection: boolean;
-  onChangeAppointmentDate: (value: string) => void;
   onWhatsApp: () => void;
-  onRegister: () => void;
-  onRegisterToday: () => void;
   onHistory: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
 }) {
   const status = getClientStatus(client);
 
   return (
-    <View style={[styles.clientCard, isDue && styles.clientCardDue]}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.clientCard,
+        isDue && styles.clientCardDue,
+        pressed && styles.clientCardPressed,
+      ]}
+      onPress={onHistory}>
       <View style={styles.clientTopRow}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{client.name.charAt(0).toUpperCase()}</Text>
@@ -941,50 +916,17 @@ function ClientCard({
         <InfoItem label="Próxima sugestão" value={formatDate(client.nextVisit)} />
       </View>
 
-      <View style={styles.registerPanel}>
-        <Text style={styles.registerTitle}>Registrar novo atendimento</Text>
-        <Field
-          icon="calendar-clear-outline"
-          placeholder="DD/MM/AAAA"
-          value={appointmentDate}
-          keyboardType="number-pad"
-          maxLength={10}
-          onChangeText={onChangeAppointmentDate}
-        />
-        <View style={styles.actions}>
-          <PrimaryButton
-            icon="today-outline"
-            title="Hoje"
-            variant="secondary"
-            onPress={onRegisterToday}
-          />
-          <PrimaryButton
-            icon="checkmark-circle-outline"
-            title="Registrar"
-            variant="secondary"
-            onPress={onRegister}
-          />
-        </View>
-      </View>
-
-      <View style={styles.footerActions}>
-        <PrimaryButton
-          icon="logo-whatsapp"
-          title="WhatsApp"
-          variant={isPrioritySection ? 'primary' : 'secondary'}
-          onPress={onWhatsApp}
-        />
-        <Pressable style={styles.iconButton} onPress={onHistory}>
-          <Ionicons name="time-outline" size={20} color={palette.ink} />
+      <View style={styles.compactActions}>
+        <Pressable style={styles.compactActionButton} onPress={onHistory}>
+          <Ionicons name="open-outline" size={18} color={palette.ink} />
+          <Text style={styles.compactActionText}>Ver detalhes</Text>
         </Pressable>
-        <Pressable style={styles.iconButton} onPress={onEdit}>
-          <Ionicons name="create-outline" size={20} color={palette.ink} />
-        </Pressable>
-        <Pressable style={[styles.iconButton, styles.deleteIconButton]} onPress={onDelete}>
-          <Ionicons name="trash-outline" size={20} color={palette.danger} />
+        <Pressable style={styles.compactWhatsappButton} onPress={onWhatsApp}>
+          <Ionicons name="logo-whatsapp" size={18} color={palette.surface} />
+          <Text style={styles.compactWhatsappText}>WhatsApp</Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -992,8 +934,13 @@ function ClientDetailsModal({
   visible,
   client,
   appointments,
+  appointmentDate,
+  onChangeAppointmentDate,
+  onRegister,
+  onRegisterToday,
   onClose,
   onEdit,
+  onDelete,
   onWhatsApp,
 }: ClientDetailsModalProps) {
   if (!client) {
@@ -1026,6 +973,32 @@ function ClientDetailsModal({
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>Histórico de atendimentos</Text>
             <Text style={styles.historyCount}>{appointments.length}</Text>
+          </View>
+
+          <View style={styles.registerPanel}>
+            <Text style={styles.registerTitle}>Registrar novo atendimento</Text>
+            <Field
+              icon="calendar-clear-outline"
+              placeholder="DD/MM/AAAA"
+              value={appointmentDate}
+              keyboardType="number-pad"
+              maxLength={10}
+              onChangeText={onChangeAppointmentDate}
+            />
+            <View style={styles.actions}>
+              <PrimaryButton
+                icon="today-outline"
+                title="Hoje"
+                variant="secondary"
+                onPress={onRegisterToday}
+              />
+              <PrimaryButton
+                icon="checkmark-circle-outline"
+                title="Registrar"
+                variant="secondary"
+                onPress={onRegister}
+              />
+            </View>
           </View>
 
           <ScrollView style={styles.historyList} nestedScrollEnabled>
@@ -1064,6 +1037,80 @@ function ClientDetailsModal({
               icon="logo-whatsapp"
               title="WhatsApp"
               onPress={() => onWhatsApp(client)}
+            />
+          </View>
+          <Pressable style={styles.modalDeleteButton} onPress={() => onDelete(client)}>
+            <Ionicons name="trash-outline" size={18} color={palette.danger} />
+            <Text style={styles.modalDeleteText}>Excluir cliente</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function NewClientModal({
+  visible,
+  name,
+  phone,
+  firstVisitDate,
+  onChangeName,
+  onChangePhone,
+  onChangeFirstVisitDate,
+  onUseToday,
+  onClose,
+  onSave,
+}: NewClientModalProps) {
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleGroup}>
+              <Text style={styles.modalTitle}>Novo cliente</Text>
+              <Text style={styles.modalSubtitle}>
+                Cadastre a primeira visita. A recorrência nasce do histórico.
+              </Text>
+            </View>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Ionicons name="close-outline" size={24} color={palette.ink} />
+            </Pressable>
+          </View>
+
+          <Field
+            icon="person-outline"
+            placeholder="Nome do cliente"
+            value={name}
+            onChangeText={onChangeName}
+          />
+          <Field
+            icon="logo-whatsapp"
+            placeholder="WhatsApp com DDD"
+            value={phone}
+            keyboardType="phone-pad"
+            maxLength={15}
+            onChangeText={onChangePhone}
+          />
+          <Field
+            icon="calendar-outline"
+            placeholder="Data do primeiro atendimento"
+            value={firstVisitDate}
+            keyboardType="number-pad"
+            maxLength={10}
+            onChangeText={onChangeFirstVisitDate}
+          />
+
+          <View style={styles.modalActions}>
+            <PrimaryButton
+              icon="today-outline"
+              title="Hoje"
+              variant="secondary"
+              onPress={onUseToday}
+            />
+            <PrimaryButton
+              icon="add-circle-outline"
+              title="Cadastrar"
+              onPress={onSave}
             />
           </View>
         </View>
@@ -1255,6 +1302,28 @@ const styles = StyleSheet.create({
   searchPanel: {
     marginBottom: 24,
   },
+  toolbarPanel: {
+    backgroundColor: palette.surface,
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    marginBottom: 24,
+  },
+  newClientButton: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 15,
+    backgroundColor: palette.ink,
+  },
+  newClientButtonText: {
+    color: palette.surface,
+    fontSize: 15,
+    fontWeight: '900',
+  },
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1390,6 +1459,10 @@ const styles = StyleSheet.create({
     borderColor: palette.line,
     marginBottom: 14,
   },
+  clientCardPressed: {
+    opacity: 0.84,
+    transform: [{ scale: 0.995 }],
+  },
   clientCardDue: {
     borderColor: '#D8AA67',
   },
@@ -1500,6 +1573,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  compactActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  compactActionButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 14,
+    backgroundColor: '#F6EFE6',
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  compactActionText: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  compactWhatsappButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 14,
+    backgroundColor: palette.ink,
+  },
+  compactWhatsappText: {
+    color: palette.surface,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   iconButton: {
     width: 48,
     height: 48,
@@ -1559,6 +1668,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 4,
+  },
+  modalDeleteButton: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 15,
+    backgroundColor: palette.dangerSoft,
+    borderWidth: 1,
+    borderColor: '#F1C8BE',
+    marginTop: 10,
+  },
+  modalDeleteText: {
+    color: palette.danger,
+    fontSize: 14,
+    fontWeight: '900',
   },
   detailsSummary: {
     gap: 8,
