@@ -14,7 +14,6 @@ const palette = {
   line: '#E8DFD3',
   paper: '#FFFCF7',
   surface: '#FFFFFF',
-  brand: '#C08A3E',
   brandDark: '#6F4316',
   green: '#16825D',
   greenSoft: '#E8F5EE',
@@ -48,6 +47,7 @@ export default function InsightsScreen() {
     return Math.round(total / clientsWithRecurrence.length);
   }, [clientsWithRecurrence]);
 
+  const learningClients = clients.length - clientsWithRecurrence.length;
   const activationRate = clients.length
     ? Math.round((clientsWithRecurrence.length / clients.length) * 100)
     : 0;
@@ -57,9 +57,9 @@ export default function InsightsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Visão executiva</Text>
-          <Text style={styles.title}>A saúde da sua carteira em tempo real.</Text>
+          <Text style={styles.title}>A saúde da carteira em tempo real.</Text>
           <Text style={styles.subtitle}>
-            Um resumo para entender retenção, previsibilidade e prioridade de contato.
+            Acompanhe previsibilidade, clientes em aprendizado e contatos que merecem prioridade.
           </Text>
         </View>
 
@@ -68,13 +68,19 @@ export default function InsightsScreen() {
             icon="repeat-outline"
             label="Recorrência média"
             value={averageRecurrence ? `${averageRecurrence} dias` : '-'}
-            description="Calculada pelos clientes com histórico suficiente."
+            description="Média dos clientes com dois ou mais atendimentos registrados."
           />
           <InsightCard
             icon="pulse-outline"
             label="Base mapeada"
             value={`${activationRate}%`}
-            description="Clientes que já possuem padrão de retorno calculado."
+            description="Percentual da carteira com padrão de retorno calculado."
+          />
+          <InsightCard
+            icon="school-outline"
+            label="Em aprendizado"
+            value={String(learningClients)}
+            description="Clientes que precisam de mais histórico para gerar previsão."
           />
           <InsightCard
             icon="chatbubbles-outline"
@@ -89,11 +95,11 @@ export default function InsightsScreen() {
             <Ionicons name="bulb-outline" size={22} color={palette.brandDark} />
           </View>
           <View style={styles.panelText}>
-            <Text style={styles.panelTitle}>Próximo salto de produto</Text>
+            <Text style={styles.panelTitle}>Leitura do produto</Text>
             <Text style={styles.panelDescription}>
-              O app já pode evoluir para filtros por status, máscara de data, perfil do cliente,
-              lembretes automáticos e tela dedicada de agenda. Essa base visual deixa espaço para
-              crescer sem parecer improvisada.
+              Quanto mais atendimentos forem registrados, melhor o app entende o comportamento
+              de cada cliente. A rotina ideal é cadastrar, registrar cada retorno e chamar pelo
+              WhatsApp quando a sugestão vencer.
             </Text>
           </View>
         </View>

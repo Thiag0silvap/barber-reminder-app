@@ -10,11 +10,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TextInputProps,
   View,
 } from 'react-native';
 
 import {
   createClient,
+  deleteClient,
   listClients,
   listClientsForToday,
   updateClientVisit,
@@ -22,6 +24,7 @@ import {
 
 import {
   createAppointment,
+  deleteAppointmentsByClient,
   getAppointmentsByClient,
 } from '@/src/database/appointmentsRepository';
 
@@ -43,7 +46,7 @@ type PrimaryButtonProps = {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 };
 
 type FieldProps = {
@@ -51,7 +54,8 @@ type FieldProps = {
   placeholder: string;
   value: string;
   onChangeText: (value: string) => void;
-  keyboardType?: 'default' | 'phone-pad';
+  keyboardType?: TextInputProps['keyboardType'];
+  maxLength?: number;
 };
 
 const palette = {
@@ -64,8 +68,168 @@ const palette = {
   brandDark: '#6F4316',
   success: '#16825D',
   successSoft: '#E8F5EE',
+  danger: '#B94A35',
+  dangerSoft: '#FCEEEA',
   warm: '#FFF2D8',
 };
+
+function getTodayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function toBrazilianDate(value: string | null) {
+  if (!value || !isValidIsoDate(value)) {
+    return '';
+  }
+
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function toIsoDate(value: string) {
+  if (!isValidBrazilianDate(value)) {
+    return '';
+  }
+
+  const [day, month, year] = value.split('/');
+  return `${year}-${month}-${day}`;
+}
+
+function onlyNumbers(value: string) {
+  return value.replace(/\D/g, '');
+}
+
+function maskDate(value: string) {
+  const numbers = onlyNumbers(value).slice(0, 8);
+  const day = numbers.slice(0, 2);
+  const month = numbers.slice(2, 4);
+  const year = numbers.slice(4, 8);
+
+  if (numbers.length > 4) {
+    return `${day}/${month}/${year}`;
+  }
+
+  if (numbers.length > 2) {
+    return `${day}/${month}`;
+  }
+
+  return day;
+}
+
+function maskPhone(value: string) {
+  const numbers = onlyNumbers(value).slice(0, 11);
+  const areaCode = numbers.slice(0, 2);
+  const firstPart = numbers.length > 10 ? numbers.slice(2, 7) : numbers.slice(2, 6);
+  const secondPart = numbers.length > 10 ? numbers.slice(7, 11) : numbers.slice(6, 10);
+
+  if (numbers.length > 6) {
+    return `(${areaCode}) ${firstPart}-${secondPart}`;
+  }
+
+  if (numbers.length > 2) {
+    return `(${areaCode}) ${firstPart}`;
+  }
+
+  if (numbers.length > 0) {
+    return `(${areaCode}`;
+  }
+
+  return '';
+}
+
+function isValidIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(value);
+
+  return (
+    date instanceof Date &&
+    !Number.isNaN(date.getTime()) &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
+function isValidBrazilianDate(value: string) {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    return false;
+  }
+
+  const [day, month, year] = value.split('/').map(Number);
+  const date = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+
+  return (
+    date instanceof Date &&
+    !Number.isNaN(date.getTime()) &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
+  );
+}
+
+function formatDate(value: string | null) {
+  if (!value || !isValidIsoDate(value)) {
+    return '-';
+  }
+
+  return toBrazilianDate(value);
+}
+
+function formatRecurrence(days: number | null) {
+  if (!days) {
+    return 'aprendendo';
+  }
+
+  return days === 1 ? '1 dia' : `${days} dias`;
+}
+
+function getDaysUntil(date: string | null) {
+  if (!date || !isValidIsoDate(date)) {
+    return null;
+  }
+
+  const today = new Date(getTodayDate()).getTime();
+  const target = new Date(date).getTime();
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function getClientStatus(client: Client) {
+  const daysUntilNextVisit = getDaysUntil(client.nextVisit);
+
+  if (!client.recurrenceDays) {
+    return {
+      label: 'Aprendendo',
+      description: 'Registre mais um atendimento para calcular a recorrência.',
+      tone: 'neutral' as const,
+    };
+  }
+
+  if (daysUntilNextVisit === null) {
+    return {
+      label: 'Sem previsão',
+      description: 'Ainda não há sugestão de retorno.',
+      tone: 'neutral' as const,
+    };
+  }
+
+  if (daysUntilNextVisit <= 0) {
+    return {
+      label: 'Chamar hoje',
+      description: 'Cliente no período ideal de retorno.',
+      tone: 'danger' as const,
+    };
+  }
+
+  return {
+    label: `Em ${daysUntilNextVisit} ${daysUntilNextVisit === 1 ? 'dia' : 'dias'}`,
+    description: 'Retorno previsto dentro da janela calculada.',
+    tone: 'success' as const,
+  };
+}
 
 export default function HomeScreen() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -73,11 +237,9 @@ export default function HomeScreen() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [firstVisitDate, setFirstVisitDate] = useState('');
+  const [firstVisitDate, setFirstVisitDate] = useState(toBrazilianDate(getTodayDate()));
 
-  const [appointmentDates, setAppointmentDates] = useState<
-    Record<number, string>
-  >({});
+  const [appointmentDates, setAppointmentDates] = useState<Record<number, string>>({});
 
   const dueClientIds = useMemo(
     () => new Set(clientsToday.map((client) => client.id)),
@@ -88,12 +250,12 @@ export default function HomeScreen() {
     () => [
       {
         title: 'Prioridade de hoje',
-        subtitle: 'Clientes com retorno sugerido para contato agora.',
+        subtitle: 'Clientes no período certo para uma chamada rápida.',
         data: clientsToday,
       },
       {
         title: 'Carteira de clientes',
-        subtitle: 'Base completa ordenada por nome.',
+        subtitle: 'Base completa com histórico e recorrência aprendida.',
         data: clients,
       },
     ],
@@ -106,54 +268,73 @@ export default function HomeScreen() {
   }
 
   function handleSaveClient() {
-    if (!name || !phone || !firstVisitDate) {
-      Alert.alert('Atenção', 'Preencha todos os campos.');
+    const normalizedName = name.trim();
+    const normalizedPhone = onlyNumbers(phone);
+
+    if (!normalizedName || !normalizedPhone || !firstVisitDate) {
+      Alert.alert('Atenção', 'Preencha nome, WhatsApp e data do primeiro atendimento.');
       return;
     }
 
+    if (normalizedPhone.length < 10) {
+      Alert.alert('Atenção', 'Informe o WhatsApp com DDD.');
+      return;
+    }
+
+    if (!isValidBrazilianDate(firstVisitDate)) {
+      Alert.alert('Atenção', 'Informe a data no formato DD/MM/AAAA.');
+      return;
+    }
+
+    const firstVisitIsoDate = toIsoDate(firstVisitDate);
+
     const clientId = createClient({
-      name,
-      phone,
-      lastVisit: firstVisitDate,
+      name: normalizedName,
+      phone: normalizedPhone,
+      lastVisit: firstVisitIsoDate,
       recurrenceDays: null,
       nextVisit: null,
     });
 
     createAppointment({
       clientId,
-      visitDate: firstVisitDate,
+      visitDate: firstVisitIsoDate,
     });
 
     setName('');
     setPhone('');
-    setFirstVisitDate('');
+    setFirstVisitDate(toBrazilianDate(getTodayDate()));
 
     loadClients();
 
-    Alert.alert('Cliente cadastrado com sucesso');
+    Alert.alert('Cliente cadastrado', 'O primeiro atendimento já entrou no histórico.');
   }
 
-  function handleRegisterAppointment(client: Client) {
-    const visitDate = appointmentDates[client.id];
-
+  function registerAppointment(client: Client, visitDate: string) {
     if (!visitDate) {
       Alert.alert('Informe a data do atendimento');
       return;
     }
 
+    if (!isValidBrazilianDate(visitDate)) {
+      Alert.alert('Atenção', 'Informe a data no formato DD/MM/AAAA.');
+      return;
+    }
+
+    const visitIsoDate = toIsoDate(visitDate);
+
     createAppointment({
       clientId: client.id,
-      visitDate,
+      visitDate: visitIsoDate,
     });
 
     const history = getAppointmentsByClient(client.id);
     const recurrence = calculateAverageRecurrence(history);
-
     const nextVisit = recurrence
-      ? calculateNextSuggestedVisit(visitDate, recurrence)
+      ? calculateNextSuggestedVisit(visitIsoDate, recurrence)
       : null;
 
-    updateClientVisit(client.id, visitDate, recurrence, nextVisit);
+    updateClientVisit(client.id, visitIsoDate, recurrence, nextVisit);
 
     setAppointmentDates((prev) => ({
       ...prev,
@@ -162,7 +343,15 @@ export default function HomeScreen() {
 
     loadClients();
 
-    Alert.alert('Atendimento registrado com sucesso');
+    Alert.alert('Atendimento registrado', 'A sugestão de retorno foi atualizada.');
+  }
+
+  function handleRegisterAppointment(client: Client) {
+    registerAppointment(client, appointmentDates[client.id]);
+  }
+
+  function handleRegisterToday(client: Client) {
+    registerAppointment(client, toBrazilianDate(getTodayDate()));
   }
 
   function handleShowHistory(client: Client) {
@@ -175,7 +364,30 @@ export default function HomeScreen() {
 
     Alert.alert(
       `Histórico de ${client.name}`,
-      history.map((h) => h.visitDate).join('\n')
+      history.map((appointment) => formatDate(appointment.visitDate)).join('\n')
+    );
+  }
+
+  function handleDeleteClient(client: Client) {
+    Alert.alert(
+      'Excluir cliente',
+      `Deseja excluir ${client.name} e todo o histórico de atendimentos? Essa ação não pode ser desfeita.`,
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: () => {
+            deleteAppointmentsByClient(client.id);
+            deleteClient(client.id);
+            loadClients();
+            Alert.alert('Cliente excluído', 'O cliente e o histórico foram removidos.');
+          },
+        },
+      ]
     );
   }
 
@@ -201,14 +413,15 @@ export default function HomeScreen() {
               phone={phone}
               firstVisitDate={firstVisitDate}
               onChangeName={setName}
-              onChangePhone={setPhone}
-              onChangeFirstVisitDate={setFirstVisitDate}
+              onChangePhone={(value) => setPhone(maskPhone(value))}
+              onChangeFirstVisitDate={(value) => setFirstVisitDate(maskDate(value))}
+              onUseToday={() => setFirstVisitDate(toBrazilianDate(getTodayDate()))}
               onSave={handleSaveClient}
             />
           }
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <View>
+              <View style={styles.sectionHeaderText}>
                 <Text style={styles.sectionTitle}>{section.title}</Text>
                 <Text style={styles.sectionSubtitle}>{section.subtitle}</Text>
               </View>
@@ -224,7 +437,7 @@ export default function HomeScreen() {
               onChangeAppointmentDate={(value: string) =>
                 setAppointmentDates((prev) => ({
                   ...prev,
-                  [item.id]: value,
+                  [item.id]: maskDate(value),
                 }))
               }
               onWhatsApp={() =>
@@ -235,7 +448,9 @@ export default function HomeScreen() {
                 })
               }
               onRegister={() => handleRegisterAppointment(item)}
+              onRegisterToday={() => handleRegisterToday(item)}
               onHistory={() => handleShowHistory(item)}
+              onDelete={() => handleDeleteClient(item)}
             />
           )}
           renderSectionFooter={({ section }) =>
@@ -249,7 +464,7 @@ export default function HomeScreen() {
                 description={
                   section.title === 'Prioridade de hoje'
                     ? 'Quando um retorno vencer, ele aparece aqui com ação rápida para WhatsApp.'
-                    : 'Cadastre o primeiro cliente para começar a criar histórico de recorrência.'
+                    : 'Cadastre o primeiro cliente para começar a formar histórico de recorrência.'
                 }
               />
             ) : null
@@ -269,6 +484,7 @@ function Header({
   onChangeName,
   onChangePhone,
   onChangeFirstVisitDate,
+  onUseToday,
   onSave,
 }: {
   clientsCount: number;
@@ -279,6 +495,7 @@ function Header({
   onChangeName: (value: string) => void;
   onChangePhone: (value: string) => void;
   onChangeFirstVisitDate: (value: string) => void;
+  onUseToday: () => void;
   onSave: () => void;
 }) {
   return (
@@ -296,7 +513,7 @@ function Header({
 
         <Text style={styles.heroTitle}>Retornos certos, agenda sempre cheia.</Text>
         <Text style={styles.heroText}>
-          Controle clientes, recorrência de cortes e chamadas por WhatsApp em um painel simples de operar.
+          Registre atendimentos e deixe o app aprender quando cada cliente costuma voltar.
         </Text>
       </View>
 
@@ -317,13 +534,15 @@ function Header({
 
       <View style={styles.formPanel}>
         <View style={styles.panelHeader}>
-          <View>
+          <View style={styles.panelHeaderText}>
             <Text style={styles.panelTitle}>Novo cliente</Text>
-            <Text style={styles.panelSubtitle}>Use datas no formato AAAA-MM-DD.</Text>
+            <Text style={styles.panelSubtitle}>
+              Cadastre a primeira visita. A recorrência nasce do histórico.
+            </Text>
           </View>
           <View style={styles.panelBadge}>
             <Ionicons name="sparkles-outline" size={14} color={palette.brandDark} />
-            <Text style={styles.panelBadgeText}>Recorrência automática</Text>
+            <Text style={styles.panelBadgeText}>Automático</Text>
           </View>
         </View>
 
@@ -338,20 +557,31 @@ function Header({
           placeholder="WhatsApp com DDD"
           value={phone}
           keyboardType="phone-pad"
+          maxLength={15}
           onChangeText={onChangePhone}
         />
         <Field
           icon="calendar-outline"
           placeholder="Data do primeiro atendimento"
           value={firstVisitDate}
+          keyboardType="number-pad"
+          maxLength={10}
           onChangeText={onChangeFirstVisitDate}
         />
 
-        <PrimaryButton
-          icon="add-circle-outline"
-          title="Cadastrar cliente"
-          onPress={onSave}
-        />
+        <View style={styles.formActions}>
+          <PrimaryButton
+            icon="today-outline"
+            title="Hoje"
+            variant="secondary"
+            onPress={onUseToday}
+          />
+          <PrimaryButton
+            icon="add-circle-outline"
+            title="Cadastrar cliente"
+            onPress={onSave}
+          />
+        </View>
       </View>
     </>
   );
@@ -395,6 +625,7 @@ function Field({
   value,
   onChangeText,
   keyboardType = 'default',
+  maxLength,
 }: FieldProps) {
   return (
     <View style={styles.field}>
@@ -406,6 +637,7 @@ function Field({
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
+        maxLength={maxLength}
       />
     </View>
   );
@@ -428,12 +660,14 @@ function PrimaryButton({
       <Ionicons
         name={icon}
         size={18}
-        color={variant === 'primary' ? palette.surface : palette.ink}
+        color={variant === 'primary' || variant === 'danger' ? palette.surface : palette.ink}
       />
       <Text
         style={[
           styles.buttonText,
-          variant === 'primary' ? styles.primaryButtonText : styles.secondaryButtonText,
+          variant === 'primary' || variant === 'danger'
+            ? styles.primaryButtonText
+            : styles.secondaryButtonText,
         ]}>
         {title}
       </Text>
@@ -449,7 +683,9 @@ function ClientCard({
   onChangeAppointmentDate,
   onWhatsApp,
   onRegister,
+  onRegisterToday,
   onHistory,
+  onDelete,
 }: {
   client: Client;
   appointmentDate: string;
@@ -458,8 +694,12 @@ function ClientCard({
   onChangeAppointmentDate: (value: string) => void;
   onWhatsApp: () => void;
   onRegister: () => void;
+  onRegisterToday: () => void;
   onHistory: () => void;
+  onDelete: () => void;
 }) {
+  const status = getClientStatus(client);
+
   return (
     <View style={[styles.clientCard, isDue && styles.clientCardDue]}>
       <View style={styles.clientTopRow}>
@@ -469,51 +709,72 @@ function ClientCard({
 
         <View style={styles.clientIdentity}>
           <Text style={styles.clientName}>{client.name}</Text>
-          <Text style={styles.clientPhone}>{client.phone}</Text>
+          <Text style={styles.clientPhone}>{maskPhone(client.phone)}</Text>
         </View>
 
-        {isDue ? (
-          <View style={styles.dueBadge}>
-            <Ionicons name="flash-outline" size={13} color={palette.brandDark} />
-            <Text style={styles.dueBadgeText}>Hoje</Text>
-          </View>
-        ) : null}
+        <View
+          style={[
+            styles.statusBadge,
+            status.tone === 'danger' && styles.statusBadgeDanger,
+            status.tone === 'success' && styles.statusBadgeSuccess,
+          ]}>
+          <Text
+            style={[
+              styles.statusBadgeText,
+              status.tone === 'danger' && styles.statusBadgeTextDanger,
+              status.tone === 'success' && styles.statusBadgeTextSuccess,
+            ]}>
+            {status.label}
+          </Text>
+        </View>
       </View>
+
+      <Text style={styles.statusDescription}>{status.description}</Text>
 
       <View style={styles.infoGrid}>
-        <InfoItem label="Último corte" value={client.lastVisit ?? '-'} />
-        <InfoItem
-          label="Recorrência"
-          value={client.recurrenceDays ? `${client.recurrenceDays} dias` : 'calculando'}
-        />
-        <InfoItem
-          label="Próxima sugestão"
-          value={client.nextVisit ?? 'aguardando histórico'}
-        />
+        <InfoItem label="Último corte" value={formatDate(client.lastVisit)} />
+        <InfoItem label="Recorrência" value={formatRecurrence(client.recurrenceDays)} />
+        <InfoItem label="Próxima sugestão" value={formatDate(client.nextVisit)} />
       </View>
 
-      <Field
-        icon="calendar-clear-outline"
-        placeholder="Data do novo atendimento"
-        value={appointmentDate}
-        onChangeText={onChangeAppointmentDate}
-      />
+      <View style={styles.registerPanel}>
+        <Text style={styles.registerTitle}>Registrar novo atendimento</Text>
+        <Field
+          icon="calendar-clear-outline"
+          placeholder="DD/MM/AAAA"
+          value={appointmentDate}
+          keyboardType="number-pad"
+          maxLength={10}
+          onChangeText={onChangeAppointmentDate}
+        />
+        <View style={styles.actions}>
+          <PrimaryButton
+            icon="today-outline"
+            title="Hoje"
+            variant="secondary"
+            onPress={onRegisterToday}
+          />
+          <PrimaryButton
+            icon="checkmark-circle-outline"
+            title="Registrar"
+            variant="secondary"
+            onPress={onRegister}
+          />
+        </View>
+      </View>
 
-      <View style={styles.actions}>
+      <View style={styles.footerActions}>
         <PrimaryButton
           icon="logo-whatsapp"
           title="WhatsApp"
           variant={isPrioritySection ? 'primary' : 'secondary'}
           onPress={onWhatsApp}
         />
-        <PrimaryButton
-          icon="checkmark-circle-outline"
-          title="Registrar"
-          variant="secondary"
-          onPress={onRegister}
-        />
         <Pressable style={styles.iconButton} onPress={onHistory}>
           <Ionicons name="time-outline" size={20} color={palette.ink} />
+        </Pressable>
+        <Pressable style={[styles.iconButton, styles.deleteIconButton]} onPress={onDelete}>
+          <Ionicons name="trash-outline" size={20} color={palette.danger} />
         </Pressable>
       </View>
     </View>
@@ -644,8 +905,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   panelHeader: {
-    gap: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
     marginBottom: 14,
+  },
+  panelHeaderText: {
+    flex: 1,
   },
   panelTitle: {
     color: palette.ink,
@@ -656,9 +922,9 @@ const styles = StyleSheet.create({
     color: palette.muted,
     marginTop: 4,
     fontSize: 13,
+    lineHeight: 18,
   },
   panelBadge: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -690,14 +956,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 12,
   },
+  formActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   button: {
+    flex: 1,
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     borderRadius: 15,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   primaryButton: {
     backgroundColor: palette.ink,
@@ -706,6 +977,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6EFE6',
     borderWidth: 1,
     borderColor: palette.line,
+  },
+  dangerButton: {
+    backgroundColor: palette.danger,
   },
   ghostButton: {
     backgroundColor: 'transparent',
@@ -731,6 +1005,9 @@ const styles = StyleSheet.create({
     gap: 14,
     marginBottom: 12,
   },
+  sectionHeaderText: {
+    flex: 1,
+  },
   sectionTitle: {
     color: palette.ink,
     fontSize: 20,
@@ -741,7 +1018,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 3,
-    maxWidth: 270,
   },
   sectionCount: {
     minWidth: 36,
@@ -770,7 +1046,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   avatar: {
     width: 44,
@@ -798,19 +1074,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  dueBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: palette.warm,
+  statusBadge: {
+    backgroundColor: '#F6EFE6',
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
-  dueBadgeText: {
-    color: palette.brandDark,
+  statusBadgeDanger: {
+    backgroundColor: palette.dangerSoft,
+  },
+  statusBadgeSuccess: {
+    backgroundColor: palette.successSoft,
+  },
+  statusBadgeText: {
+    color: palette.muted,
     fontSize: 12,
     fontWeight: '800',
+  },
+  statusBadgeTextDanger: {
+    color: palette.danger,
+  },
+  statusBadgeTextSuccess: {
+    color: palette.success,
+  },
+  statusDescription: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
   infoGrid: {
     gap: 8,
@@ -838,10 +1129,25 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'right',
   },
+  registerPanel: {
+    backgroundColor: '#FFFAF2',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+  },
+  registerTitle: {
+    color: palette.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
   actions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 2,
+  },
+  footerActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   iconButton: {
     width: 48,
@@ -852,6 +1158,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6EFE6',
     borderWidth: 1,
     borderColor: palette.line,
+  },
+  deleteIconButton: {
+    backgroundColor: palette.dangerSoft,
+    borderColor: '#F1C8BE',
   },
   emptyState: {
     alignItems: 'center',

@@ -26,3 +26,13 @@ export function getAppointmentsByClient(clientId: number): Appointment[] {
     [clientId]
   ) as Appointment[];
 }
+
+export function deleteAppointmentsByClient(clientId: number) {
+  database.runSync(
+    `
+    DELETE FROM appointments
+    WHERE client_id = ?
+    `,
+    [clientId]
+  );
+}

@@ -94,3 +94,13 @@ export function updateClientVisit(
     [lastVisit, recurrenceDays, nextVisit, clientId]
   );
 }
+
+export function deleteClient(clientId: number) {
+  database.runSync(
+    `
+    DELETE FROM clients
+    WHERE id = ?;
+    `,
+    [clientId]
+  );
+}
