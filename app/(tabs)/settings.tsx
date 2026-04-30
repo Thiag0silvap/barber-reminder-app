@@ -112,7 +112,9 @@ export default function SettingsScreen() {
     };
 
     updateAppSettings(settings);
-    const scheduled = await scheduleDailyClientReminder(settings);
+    const scheduled = await scheduleDailyClientReminder(settings, {
+      requestPermission: true,
+    });
 
     Alert.alert(
       'Configurações salvas',

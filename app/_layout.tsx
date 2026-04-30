@@ -22,8 +22,12 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-    runMigrations();
-    scheduleDailyClientReminder(getAppSettings());
+    try {
+      runMigrations();
+      scheduleDailyClientReminder(getAppSettings());
+    } catch (error) {
+      console.warn('Nao foi possivel inicializar o app.', error);
+    }
   }, []);
 
   return (
