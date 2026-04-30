@@ -77,6 +77,20 @@ type EditClientModalProps = {
   onSave: () => void;
 };
 
+type DateFieldProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  placeholder: string;
+  value: string;
+  onChangeText: (value: string) => void;
+};
+
+type CalendarModalProps = {
+  visible: boolean;
+  selectedDate: string;
+  onClose: () => void;
+  onSelectDate: (value: string) => void;
+};
+
 type NewClientModalProps = {
   visible: boolean;
   name: string;
@@ -88,6 +102,13 @@ type NewClientModalProps = {
   onUseToday: () => void;
   onClose: () => void;
   onSave: () => void;
+};
+
+type SearchSuggestion = {
+  id: number;
+  name: string;
+  phone: string;
+  statusLabel: string;
 };
 
 type ClientDetailsModalProps = {
@@ -261,6 +282,46 @@ function formatDate(value: string | null) {
   return toBrazilianDate(value);
 }
 
+function getMonthLabel(date: Date) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+}
+
+function buildCalendarDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const offset = firstDay.getDay();
+  const days: { date: Date; currentMonth: boolean }[] = [];
+
+  for (let i = offset; i > 0; i--) {
+    days.push({
+      date: new Date(year, month, 1 - i),
+      currentMonth: false,
+    });
+  }
+
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    days.push({
+      date: new Date(year, month, day),
+      currentMonth: true,
+    });
+  }
+
+  while (days.length % 7 !== 0) {
+    const nextDay = days.length - offset - lastDay.getDate() + 1;
+    days.push({
+      date: new Date(year, month + 1, nextDay),
+      currentMonth: false,
+    });
+  }
+
+  return days;
+}
+
 function formatRecurrence(days: number | null) {
   if (!days) {
     return 'aprendendo';
@@ -337,6 +398,19 @@ export default function HomeScreen() {
   const filteredClientsToday = useMemo(
     () => clientsToday.filter((client) => clientMatchesSearch(client, searchTerm)),
     [clientsToday, searchTerm]
+  );
+
+  const searchSuggestions = useMemo<SearchSuggestion[]>(
+    () =>
+      searchTerm.trim()
+        ? filteredClients.slice(0, 5).map((client) => ({
+            id: client.id,
+            name: client.name,
+            phone: client.phone,
+            statusLabel: getClientStatus(client).label,
+          }))
+        : [],
+    [filteredClients, searchTerm]
   );
 
   const dueClientIds = useMemo(
@@ -594,7 +668,16 @@ export default function HomeScreen() {
               clientsCount={clients.length}
               clientsTodayCount={clientsToday.length}
               searchTerm={searchTerm}
+              suggestions={searchSuggestions}
               onChangeSearchTerm={setSearchTerm}
+              onSelectSuggestion={(clientId) => {
+                const selectedClient = clients.find((client) => client.id === clientId);
+
+                if (selectedClient) {
+                  setSearchTerm('');
+                  handleShowHistory(selectedClient);
+                }
+              }}
               onOpenNewClient={() => setIsNewClientModalVisible(true)}
             />
           }
@@ -712,13 +795,17 @@ function Header({
   clientsCount,
   clientsTodayCount,
   searchTerm,
+  suggestions,
   onChangeSearchTerm,
+  onSelectSuggestion,
   onOpenNewClient,
 }: {
   clientsCount: number;
   clientsTodayCount: number;
   searchTerm: string;
+  suggestions: SearchSuggestion[];
   onChangeSearchTerm: (value: string) => void;
+  onSelectSuggestion: (clientId: number) => void;
   onOpenNewClient: () => void;
 }) {
   return (
@@ -763,6 +850,31 @@ function Header({
           onChangeText={onChangeSearchTerm}
           keyboardType="default"
         />
+        {suggestions.length ? (
+          <View style={styles.suggestionsList}>
+            {suggestions.map((suggestion) => (
+              <Pressable
+                key={suggestion.id}
+                style={styles.suggestionItem}
+                onPress={() => onSelectSuggestion(suggestion.id)}>
+                <View style={styles.suggestionAvatar}>
+                  <Text style={styles.suggestionAvatarText}>
+                    {suggestion.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.suggestionText}>
+                  <Text style={styles.suggestionName}>{suggestion.name}</Text>
+                  <Text style={styles.suggestionPhone}>{maskPhone(suggestion.phone)}</Text>
+                </View>
+                <Text style={styles.suggestionStatus}>{suggestion.statusLabel}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : searchTerm.trim() ? (
+          <View style={styles.noSuggestion}>
+            <Text style={styles.noSuggestionText}>Nenhum cliente encontrado</Text>
+          </View>
+        ) : null}
         <Pressable style={styles.newClientButton} onPress={onOpenNewClient}>
           <Ionicons name="add-circle-outline" size={20} color={palette.surface} />
           <Text style={styles.newClientButtonText}>Novo cliente</Text>
@@ -825,6 +937,135 @@ function Field({
         maxLength={maxLength}
       />
     </View>
+  );
+}
+
+function DateField({ icon, placeholder, value, onChangeText }: DateFieldProps) {
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+
+  return (
+    <>
+      <Pressable style={styles.field} onPress={() => setIsCalendarVisible(true)}>
+        <Ionicons name={icon} size={19} color={palette.muted} />
+        <Text style={[styles.dateFieldText, !value && styles.dateFieldPlaceholder]}>
+          {value || placeholder}
+        </Text>
+        <Ionicons name="chevron-down-outline" size={18} color={palette.muted} />
+      </Pressable>
+
+      <CalendarModal
+        visible={isCalendarVisible}
+        selectedDate={value}
+        onClose={() => setIsCalendarVisible(false)}
+        onSelectDate={(date) => {
+          onChangeText(date);
+          setIsCalendarVisible(false);
+        }}
+      />
+    </>
+  );
+}
+
+function CalendarModal({
+  visible,
+  selectedDate,
+  onClose,
+  onSelectDate,
+}: CalendarModalProps) {
+  const initialDate = selectedDate ? parseIsoDateAsLocal(toIsoDate(selectedDate)) : new Date();
+  const [visibleMonth, setVisibleMonth] = useState(
+    new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
+  );
+
+  useEffect(() => {
+    if (visible) {
+      const date = selectedDate ? parseIsoDateAsLocal(toIsoDate(selectedDate)) : new Date();
+      setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    }
+  }, [selectedDate, visible]);
+
+  const days = buildCalendarDays(visibleMonth);
+  const selectedIsoDate = selectedDate ? toIsoDate(selectedDate) : '';
+  const todayIsoDate = getTodayDate();
+
+  function handleChangeMonth(direction: -1 | 1) {
+    setVisibleMonth(
+      (current) => new Date(current.getFullYear(), current.getMonth() + direction, 1)
+    );
+  }
+
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.calendarCard}>
+          <View style={styles.calendarHeader}>
+            <Pressable style={styles.calendarNavButton} onPress={() => handleChangeMonth(-1)}>
+              <Ionicons name="chevron-back-outline" size={22} color={palette.ink} />
+            </Pressable>
+            <Text style={styles.calendarTitle}>{getMonthLabel(visibleMonth)}</Text>
+            <Pressable style={styles.calendarNavButton} onPress={() => handleChangeMonth(1)}>
+              <Ionicons name="chevron-forward-outline" size={22} color={palette.ink} />
+            </Pressable>
+          </View>
+
+          <View style={styles.weekRow}>
+            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, index) => (
+              <Text key={`${day}-${index}`} style={styles.weekDay}>
+                {day}
+              </Text>
+            ))}
+          </View>
+
+          <View style={styles.calendarGrid}>
+            {days.map(({ date, currentMonth }) => {
+              const isoDate = getLocalIsoDate(date);
+              const brazilianDate = toBrazilianDate(isoDate);
+              const isSelected = isoDate === selectedIsoDate;
+              const isToday = isoDate === todayIsoDate;
+              const isFuture = diffIsoDatesInDays(todayIsoDate, isoDate) > 0;
+
+              return (
+                <Pressable
+                  key={isoDate}
+                  disabled={isFuture}
+                  style={[
+                    styles.calendarDay,
+                    !currentMonth && styles.calendarDayMuted,
+                    isToday && styles.calendarDayToday,
+                    isSelected && styles.calendarDaySelected,
+                    isFuture && styles.calendarDayDisabled,
+                  ]}
+                  onPress={() => onSelectDate(brazilianDate)}>
+                  <Text
+                    style={[
+                      styles.calendarDayText,
+                      !currentMonth && styles.calendarDayTextMuted,
+                      isSelected && styles.calendarDayTextSelected,
+                      isFuture && styles.calendarDayTextDisabled,
+                    ]}>
+                    {date.getDate()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.calendarActions}>
+            <PrimaryButton
+              icon="close-circle-outline"
+              title="Cancelar"
+              variant="secondary"
+              onPress={onClose}
+            />
+            <PrimaryButton
+              icon="today-outline"
+              title="Hoje"
+              onPress={() => onSelectDate(toBrazilianDate(getTodayDate()))}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -977,14 +1218,12 @@ function ClientDetailsModal({
 
           <View style={styles.registerPanel}>
             <Text style={styles.registerTitle}>Registrar novo atendimento</Text>
-            <Field
-              icon="calendar-clear-outline"
-              placeholder="DD/MM/AAAA"
-              value={appointmentDate}
-              keyboardType="number-pad"
-              maxLength={10}
-              onChangeText={onChangeAppointmentDate}
-            />
+          <DateField
+            icon="calendar-clear-outline"
+            placeholder="DD/MM/AAAA"
+            value={appointmentDate}
+            onChangeText={onChangeAppointmentDate}
+          />
             <View style={styles.actions}>
               <PrimaryButton
                 icon="today-outline"
@@ -1091,12 +1330,10 @@ function NewClientModal({
             maxLength={15}
             onChangeText={onChangePhone}
           />
-          <Field
+          <DateField
             icon="calendar-outline"
             placeholder="Data do primeiro atendimento"
             value={firstVisitDate}
-            keyboardType="number-pad"
-            maxLength={10}
             onChangeText={onChangeFirstVisitDate}
           />
 
@@ -1324,6 +1561,72 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
+  suggestionsList: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  suggestionItem: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 15,
+    backgroundColor: '#FFFAF2',
+    borderWidth: 1,
+    borderColor: palette.line,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  suggestionAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.ink,
+  },
+  suggestionAvatarText: {
+    color: palette.surface,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  suggestionText: {
+    flex: 1,
+  },
+  suggestionName: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  suggestionPhone: {
+    color: palette.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  suggestionStatus: {
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: '#F6EFE6',
+    color: palette.brandDark,
+    fontSize: 11,
+    fontWeight: '900',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  noSuggestion: {
+    alignItems: 'center',
+    borderRadius: 14,
+    backgroundColor: '#FFFAF2',
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 12,
+    marginBottom: 10,
+  },
+  noSuggestionText: {
+    color: palette.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1375,6 +1678,15 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: 15,
     paddingVertical: 12,
+  },
+  dateFieldText: {
+    flex: 1,
+    color: palette.ink,
+    fontSize: 15,
+    paddingVertical: 14,
+  },
+  dateFieldPlaceholder: {
+    color: '#A49A90',
   },
   formActions: {
     flexDirection: 'row',
@@ -1635,6 +1947,86 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: palette.line,
+  },
+  calendarCard: {
+    backgroundColor: palette.surface,
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  calendarNavButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: '#F6EFE6',
+  },
+  calendarTitle: {
+    color: palette.ink,
+    fontSize: 18,
+    fontWeight: '900',
+    textTransform: 'capitalize',
+  },
+  weekRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  weekDay: {
+    flex: 1,
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  calendarDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+  calendarDayMuted: {
+    opacity: 0.38,
+  },
+  calendarDayToday: {
+    backgroundColor: palette.warm,
+  },
+  calendarDaySelected: {
+    backgroundColor: palette.ink,
+  },
+  calendarDayDisabled: {
+    opacity: 0.22,
+  },
+  calendarDayText: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  calendarDayTextMuted: {
+    color: palette.muted,
+  },
+  calendarDayTextSelected: {
+    color: palette.surface,
+  },
+  calendarDayTextDisabled: {
+    color: palette.muted,
+  },
+  calendarActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   modalHeader: {
     flexDirection: 'row',

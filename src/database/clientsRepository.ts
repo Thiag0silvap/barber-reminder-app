@@ -10,6 +10,11 @@ type CreateClientDTO = {
   notes?: string;
 };
 
+type RestoreClientDTO = CreateClientDTO & {
+  id: number;
+  createdAt?: string;
+};
+
 export function createClient(data: CreateClientDTO): number {
   const result = database.runSync(
     `
@@ -115,5 +120,36 @@ export function deleteClient(clientId: number) {
     WHERE id = ?;
     `,
     [clientId]
+  );
+}
+
+export function clearClients() {
+  database.runSync('DELETE FROM clients;');
+}
+
+export function restoreClient(data: RestoreClientDTO) {
+  database.runSync(
+    `
+    INSERT INTO clients (
+      id,
+      name,
+      phone,
+      last_visit,
+      recurrence_days,
+      next_visit,
+      notes,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    `,
+    [
+      data.id,
+      data.name,
+      data.phone,
+      data.lastVisit ?? null,
+      data.recurrenceDays ?? null,
+      data.nextVisit ?? null,
+      data.notes ?? null,
+      data.createdAt ?? new Date().toISOString(),
+    ]
   );
 }

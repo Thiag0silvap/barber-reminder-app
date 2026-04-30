@@ -22,7 +22,11 @@ import {
   scheduleDailyClientReminder,
   sendTestReminder,
 } from '@/src/services/notificationService';
-import { exportBackup } from '@/src/services/backupService';
+import {
+  exportBackupFile,
+  pickBackupFile,
+  restoreBackupFile,
+} from '@/src/services/backupService';
 
 const palette = {
   ink: '#17110B',
@@ -144,9 +148,45 @@ export default function SettingsScreen() {
 
   async function handleExportBackup() {
     try {
-      await exportBackup();
+      await exportBackupFile();
     } catch {
       Alert.alert('Erro ao exportar', 'Não foi possível gerar o backup agora.');
+    }
+  }
+
+  async function handleImportBackup() {
+    try {
+      const backup = await pickBackupFile();
+
+      if (!backup) {
+        return;
+      }
+
+      Alert.alert(
+        'Restaurar backup',
+        `Este backup possui ${backup.clientsCount} cliente(s) e ${backup.appointmentsCount} atendimento(s). Os dados atuais serão substituídos. Deseja continuar?`,
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+          {
+            text: 'Restaurar',
+            style: 'destructive',
+            onPress: () => {
+              try {
+                restoreBackupFile(backup.fileUri);
+                loadSettings();
+                Alert.alert('Backup restaurado', 'Os dados foram recuperados com sucesso.');
+              } catch {
+                Alert.alert('Erro ao restaurar', 'O arquivo selecionado não é um backup válido.');
+              }
+            },
+          },
+        ]
+      );
+    } catch {
+      Alert.alert('Erro ao importar', 'Não foi possível ler o arquivo de backup.');
     }
   }
 
@@ -241,12 +281,16 @@ export default function SettingsScreen() {
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Backup</Text>
           <Text style={styles.panelSubtitle}>
-            Exporte clientes, atendimentos e configurações em um arquivo de texto JSON.
+            Exporte ou restaure um arquivo seguro com clientes, atendimentos e configurações.
           </Text>
 
           <Pressable style={styles.testButton} onPress={handleExportBackup}>
             <Ionicons name="download-outline" size={18} color={palette.ink} />
             <Text style={styles.testButtonText}>Exportar backup</Text>
+          </Pressable>
+          <Pressable style={styles.testButton} onPress={handleImportBackup}>
+            <Ionicons name="cloud-upload-outline" size={18} color={palette.ink} />
+            <Text style={styles.testButtonText}>Importar backup</Text>
           </Pressable>
         </View>
 

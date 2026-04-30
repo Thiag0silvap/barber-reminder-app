@@ -50,3 +50,26 @@ export function deleteAppointmentsByClient(clientId: number) {
     [clientId]
   );
 }
+
+export function clearAppointments() {
+  database.runSync('DELETE FROM appointments;');
+}
+
+export function restoreAppointment(appointment: Appointment) {
+  database.runSync(
+    `
+    INSERT INTO appointments (
+      id,
+      client_id,
+      visit_date,
+      created_at
+    ) VALUES (?, ?, ?, ?);
+    `,
+    [
+      appointment.id ?? null,
+      appointment.clientId,
+      appointment.visitDate,
+      appointment.createdAt ?? new Date().toISOString(),
+    ]
+  );
+}
