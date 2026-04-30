@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -19,6 +21,7 @@ import {
   deleteClient,
   listClients,
   listClientsForToday,
+  updateClientInfo,
   updateClientVisit,
 } from '@/src/database/clientsRepository';
 
@@ -34,6 +37,7 @@ import {
 } from '@/src/utils/recurrenceUtils';
 
 import { openWhatsAppMessage } from '@/src/services/whatsappService';
+import { Appointment } from '@/src/types/Appointment';
 import { Client } from '@/src/types/Client';
 
 type ClientSection = {
@@ -56,6 +60,25 @@ type FieldProps = {
   onChangeText: (value: string) => void;
   keyboardType?: TextInputProps['keyboardType'];
   maxLength?: number;
+};
+
+type EditClientModalProps = {
+  visible: boolean;
+  name: string;
+  phone: string;
+  onChangeName: (value: string) => void;
+  onChangePhone: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+};
+
+type ClientDetailsModalProps = {
+  visible: boolean;
+  client: Client | null;
+  appointments: Appointment[];
+  onClose: () => void;
+  onEdit: (client: Client) => void;
+  onWhatsApp: (client: Client) => void;
 };
 
 const palette = {
@@ -97,6 +120,28 @@ function toIsoDate(value: string) {
 
 function onlyNumbers(value: string) {
   return value.replace(/\D/g, '');
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function clientMatchesSearch(client: Client, searchTerm: string) {
+  const normalizedTerm = normalizeSearch(searchTerm);
+  const numericTerm = onlyNumbers(searchTerm);
+
+  if (!normalizedTerm && !numericTerm) {
+    return true;
+  }
+
+  return (
+    normalizeSearch(client.name).includes(normalizedTerm) ||
+    onlyNumbers(client.phone).includes(numericTerm)
+  );
 }
 
 function maskDate(value: string) {
@@ -171,6 +216,15 @@ function isValidBrazilianDate(value: string) {
   );
 }
 
+function isFutureBrazilianDate(value: string) {
+  if (!isValidBrazilianDate(value)) {
+    return false;
+  }
+
+  const isoDate = toIsoDate(value);
+  return new Date(isoDate).getTime() > new Date(getTodayDate()).getTime();
+}
+
 function formatDate(value: string | null) {
   if (!value || !isValidIsoDate(value)) {
     return '-';
@@ -238,8 +292,25 @@ export default function HomeScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [firstVisitDate, setFirstVisitDate] = useState(toBrazilianDate(getTodayDate()));
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [detailsClient, setDetailsClient] = useState<Client | null>(null);
+  const [detailsAppointments, setDetailsAppointments] = useState<Appointment[]>([]);
 
   const [appointmentDates, setAppointmentDates] = useState<Record<number, string>>({});
+
+  const filteredClients = useMemo(
+    () => clients.filter((client) => clientMatchesSearch(client, searchTerm)),
+    [clients, searchTerm]
+  );
+
+  const filteredClientsToday = useMemo(
+    () => clientsToday.filter((client) => clientMatchesSearch(client, searchTerm)),
+    [clientsToday, searchTerm]
+  );
 
   const dueClientIds = useMemo(
     () => new Set(clientsToday.map((client) => client.id)),
@@ -251,15 +322,15 @@ export default function HomeScreen() {
       {
         title: 'Prioridade de hoje',
         subtitle: 'Clientes no período certo para uma chamada rápida.',
-        data: clientsToday,
+        data: filteredClientsToday,
       },
       {
         title: 'Carteira de clientes',
         subtitle: 'Base completa com histórico e recorrência aprendida.',
-        data: clients,
+        data: filteredClients,
       },
     ],
-    [clients, clientsToday]
+    [filteredClients, filteredClientsToday]
   );
 
   function loadClients() {
@@ -281,8 +352,22 @@ export default function HomeScreen() {
       return;
     }
 
+    const phoneAlreadyExists = clients.some(
+      (client) => onlyNumbers(client.phone) === normalizedPhone
+    );
+
+    if (phoneAlreadyExists) {
+      Alert.alert('Cliente já cadastrado', 'Já existe um cliente com esse WhatsApp.');
+      return;
+    }
+
     if (!isValidBrazilianDate(firstVisitDate)) {
       Alert.alert('Atenção', 'Informe a data no formato DD/MM/AAAA.');
+      return;
+    }
+
+    if (isFutureBrazilianDate(firstVisitDate)) {
+      Alert.alert('Atenção', 'A primeira visita não pode ser uma data futura.');
       return;
     }
 
@@ -318,6 +403,11 @@ export default function HomeScreen() {
 
     if (!isValidBrazilianDate(visitDate)) {
       Alert.alert('Atenção', 'Informe a data no formato DD/MM/AAAA.');
+      return;
+    }
+
+    if (isFutureBrazilianDate(visitDate)) {
+      Alert.alert('Atenção', 'O atendimento não pode ser registrado em uma data futura.');
       return;
     }
 
@@ -357,6 +447,12 @@ export default function HomeScreen() {
   function handleShowHistory(client: Client) {
     const history = getAppointmentsByClient(client.id);
 
+    setDetailsClient(client);
+    setDetailsAppointments(history);
+    if (history.length >= 0) {
+      return;
+    }
+
     if (!history.length) {
       Alert.alert('Sem histórico ainda');
       return;
@@ -366,6 +462,11 @@ export default function HomeScreen() {
       `Histórico de ${client.name}`,
       history.map((appointment) => formatDate(appointment.visitDate)).join('\n')
     );
+  }
+
+  function handleCloseDetails() {
+    setDetailsClient(null);
+    setDetailsAppointments([]);
   }
 
   function handleDeleteClient(client: Client) {
@@ -389,6 +490,53 @@ export default function HomeScreen() {
         },
       ]
     );
+  }
+
+  function handleOpenEditClient(client: Client) {
+    setEditingClient(client);
+    setEditName(client.name);
+    setEditPhone(maskPhone(client.phone));
+  }
+
+  function handleCloseEditClient() {
+    setEditingClient(null);
+    setEditName('');
+    setEditPhone('');
+  }
+
+  function handleUpdateClient() {
+    if (!editingClient) {
+      return;
+    }
+
+    const normalizedName = editName.trim();
+    const normalizedPhone = onlyNumbers(editPhone);
+
+    if (!normalizedName || !normalizedPhone) {
+      Alert.alert('Atenção', 'Preencha nome e WhatsApp.');
+      return;
+    }
+
+    if (normalizedPhone.length < 10) {
+      Alert.alert('Atenção', 'Informe o WhatsApp com DDD.');
+      return;
+    }
+
+    const phoneAlreadyExists = clients.some(
+      (client) =>
+        client.id !== editingClient.id && onlyNumbers(client.phone) === normalizedPhone
+    );
+
+    if (phoneAlreadyExists) {
+      Alert.alert('WhatsApp já cadastrado', 'Outro cliente já usa esse número.');
+      return;
+    }
+
+    updateClientInfo(editingClient.id, normalizedName, normalizedPhone);
+    handleCloseEditClient();
+    loadClients();
+
+    Alert.alert('Cliente atualizado', 'Os dados do cliente foram salvos.');
   }
 
   useEffect(() => {
@@ -415,9 +563,11 @@ export default function HomeScreen() {
               name={name}
               phone={phone}
               firstVisitDate={firstVisitDate}
+              searchTerm={searchTerm}
               onChangeName={setName}
               onChangePhone={(value) => setPhone(maskPhone(value))}
               onChangeFirstVisitDate={(value) => setFirstVisitDate(maskDate(value))}
+              onChangeSearchTerm={setSearchTerm}
               onUseToday={() => setFirstVisitDate(toBrazilianDate(getTodayDate()))}
               onSave={handleSaveClient}
             />
@@ -453,6 +603,7 @@ export default function HomeScreen() {
               onRegister={() => handleRegisterAppointment(item)}
               onRegisterToday={() => handleRegisterToday(item)}
               onHistory={() => handleShowHistory(item)}
+              onEdit={() => handleOpenEditClient(item)}
               onDelete={() => handleDeleteClient(item)}
             />
           )}
@@ -474,6 +625,32 @@ export default function HomeScreen() {
           }
         />
       </KeyboardAvoidingView>
+      <EditClientModal
+        visible={!!editingClient}
+        name={editName}
+        phone={editPhone}
+        onChangeName={setEditName}
+        onChangePhone={(value) => setEditPhone(maskPhone(value))}
+        onClose={handleCloseEditClient}
+        onSave={handleUpdateClient}
+      />
+      <ClientDetailsModal
+        visible={!!detailsClient}
+        client={detailsClient}
+        appointments={detailsAppointments}
+        onClose={handleCloseDetails}
+        onEdit={(client) => {
+          handleCloseDetails();
+          handleOpenEditClient(client);
+        }}
+        onWhatsApp={(client) =>
+          openWhatsAppMessage({
+            phone: client.phone,
+            clientName: client.name,
+            recurrenceDays: client.recurrenceDays ?? 0,
+          })
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -484,9 +661,11 @@ function Header({
   name,
   phone,
   firstVisitDate,
+  searchTerm,
   onChangeName,
   onChangePhone,
   onChangeFirstVisitDate,
+  onChangeSearchTerm,
   onUseToday,
   onSave,
 }: {
@@ -495,9 +674,11 @@ function Header({
   name: string;
   phone: string;
   firstVisitDate: string;
+  searchTerm: string;
   onChangeName: (value: string) => void;
   onChangePhone: (value: string) => void;
   onChangeFirstVisitDate: (value: string) => void;
+  onChangeSearchTerm: (value: string) => void;
   onUseToday: () => void;
   onSave: () => void;
 }) {
@@ -585,6 +766,16 @@ function Header({
             onPress={onSave}
           />
         </View>
+      </View>
+
+      <View style={styles.searchPanel}>
+        <Field
+          icon="search-outline"
+          placeholder="Buscar cliente por nome ou WhatsApp"
+          value={searchTerm}
+          onChangeText={onChangeSearchTerm}
+          keyboardType="default"
+        />
       </View>
     </>
   );
@@ -688,6 +879,7 @@ function ClientCard({
   onRegister,
   onRegisterToday,
   onHistory,
+  onEdit,
   onDelete,
 }: {
   client: Client;
@@ -699,6 +891,7 @@ function ClientCard({
   onRegister: () => void;
   onRegisterToday: () => void;
   onHistory: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const status = getClientStatus(client);
@@ -776,11 +969,155 @@ function ClientCard({
         <Pressable style={styles.iconButton} onPress={onHistory}>
           <Ionicons name="time-outline" size={20} color={palette.ink} />
         </Pressable>
+        <Pressable style={styles.iconButton} onPress={onEdit}>
+          <Ionicons name="create-outline" size={20} color={palette.ink} />
+        </Pressable>
         <Pressable style={[styles.iconButton, styles.deleteIconButton]} onPress={onDelete}>
           <Ionicons name="trash-outline" size={20} color={palette.danger} />
         </Pressable>
       </View>
     </View>
+  );
+}
+
+function ClientDetailsModal({
+  visible,
+  client,
+  appointments,
+  onClose,
+  onEdit,
+  onWhatsApp,
+}: ClientDetailsModalProps) {
+  if (!client) {
+    return null;
+  }
+
+  const status = getClientStatus(client);
+
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleGroup}>
+              <Text style={styles.modalTitle}>{client.name}</Text>
+              <Text style={styles.modalSubtitle}>{maskPhone(client.phone)}</Text>
+            </View>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Ionicons name="close-outline" size={24} color={palette.ink} />
+            </Pressable>
+          </View>
+
+          <View style={styles.detailsSummary}>
+            <InfoItem label="Status" value={status.label} />
+            <InfoItem label="Último corte" value={formatDate(client.lastVisit)} />
+            <InfoItem label="Recorrência" value={formatRecurrence(client.recurrenceDays)} />
+            <InfoItem label="Próxima sugestão" value={formatDate(client.nextVisit)} />
+          </View>
+
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>Histórico de atendimentos</Text>
+            <Text style={styles.historyCount}>{appointments.length}</Text>
+          </View>
+
+          <ScrollView style={styles.historyList} nestedScrollEnabled>
+            {appointments.length ? (
+              appointments.map((appointment, index) => (
+                <View
+                  key={`${appointment.id ?? appointment.visitDate}-${index}`}
+                  style={styles.historyItem}>
+                  <View style={styles.historyIcon}>
+                    <Ionicons name="cut-outline" size={17} color={palette.brandDark} />
+                  </View>
+                  <View style={styles.historyText}>
+                    <Text style={styles.historyDate}>{formatDate(appointment.visitDate)}</Text>
+                    <Text style={styles.historyMeta}>
+                      {index === 0 ? 'Atendimento mais recente' : 'Atendimento registrado'}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyHistory}>
+                <Ionicons name="calendar-outline" size={24} color={palette.brandDark} />
+                <Text style={styles.emptyHistoryTitle}>Sem histórico registrado</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <PrimaryButton
+              icon="create-outline"
+              title="Editar"
+              variant="secondary"
+              onPress={() => onEdit(client)}
+            />
+            <PrimaryButton
+              icon="logo-whatsapp"
+              title="WhatsApp"
+              onPress={() => onWhatsApp(client)}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function EditClientModal({
+  visible,
+  name,
+  phone,
+  onChangeName,
+  onChangePhone,
+  onClose,
+  onSave,
+}: EditClientModalProps) {
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>Editar cliente</Text>
+              <Text style={styles.modalSubtitle}>Atualize nome ou WhatsApp.</Text>
+            </View>
+            <Pressable style={styles.modalCloseButton} onPress={onClose}>
+              <Ionicons name="close-outline" size={24} color={palette.ink} />
+            </Pressable>
+          </View>
+
+          <Field
+            icon="person-outline"
+            placeholder="Nome do cliente"
+            value={name}
+            onChangeText={onChangeName}
+          />
+          <Field
+            icon="logo-whatsapp"
+            placeholder="WhatsApp com DDD"
+            value={phone}
+            keyboardType="phone-pad"
+            maxLength={15}
+            onChangeText={onChangePhone}
+          />
+
+          <View style={styles.modalActions}>
+            <PrimaryButton
+              icon="close-circle-outline"
+              title="Cancelar"
+              variant="secondary"
+              onPress={onClose}
+            />
+            <PrimaryButton
+              icon="save-outline"
+              title="Salvar"
+              onPress={onSave}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -905,6 +1242,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: palette.line,
+    marginBottom: 24,
+  },
+  searchPanel: {
     marginBottom: 24,
   },
   panelHeader: {
@@ -1165,6 +1505,123 @@ const styles = StyleSheet.create({
   deleteIconButton: {
     backgroundColor: palette.dangerSoft,
     borderColor: '#F1C8BE',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(23, 17, 11, 0.42)',
+  },
+  modalCard: {
+    backgroundColor: palette.surface,
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  modalTitleGroup: {
+    flex: 1,
+  },
+  modalTitle: {
+    color: palette.ink,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  modalSubtitle: {
+    color: palette.muted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: '#F6EFE6',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  detailsSummary: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  historyTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  historyCount: {
+    overflow: 'hidden',
+    borderRadius: 10,
+    backgroundColor: '#F1E6D8',
+    color: palette.brandDark,
+    fontSize: 13,
+    fontWeight: '900',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  historyList: {
+    gap: 8,
+    maxHeight: 260,
+    marginBottom: 14,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFAF2',
+    borderRadius: 14,
+    padding: 12,
+  },
+  historyIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: palette.warm,
+  },
+  historyText: {
+    flex: 1,
+  },
+  historyDate: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  historyMeta: {
+    color: palette.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  emptyHistory: {
+    alignItems: 'center',
+    backgroundColor: '#FFFAF2',
+    borderRadius: 16,
+    padding: 18,
+  },
+  emptyHistoryTitle: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 8,
   },
   emptyState: {
     alignItems: 'center',

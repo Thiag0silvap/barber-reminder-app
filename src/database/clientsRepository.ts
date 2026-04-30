@@ -95,6 +95,19 @@ export function updateClientVisit(
   );
 }
 
+export function updateClientInfo(clientId: number, name: string, phone: string) {
+  database.runSync(
+    `
+    UPDATE clients
+    SET
+      name = ?,
+      phone = ?
+    WHERE id = ?;
+    `,
+    [name, phone, clientId]
+  );
+}
+
 export function deleteClient(clientId: number) {
   database.runSync(
     `
