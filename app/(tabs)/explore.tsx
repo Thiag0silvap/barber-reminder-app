@@ -1,112 +1,235 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useMemo, useState } from 'react';
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import {
+  listClients,
+  listClientsForToday,
+} from '@/src/database/clientsRepository';
+import { Client } from '@/src/types/Client';
 
-export default function TabTwoScreen() {
+const palette = {
+  ink: '#17110B',
+  muted: '#7A7168',
+  line: '#E8DFD3',
+  paper: '#FFFCF7',
+  surface: '#FFFFFF',
+  brand: '#C08A3E',
+  brandDark: '#6F4316',
+  green: '#16825D',
+  greenSoft: '#E8F5EE',
+  warm: '#FFF2D8',
+};
+
+export default function InsightsScreen() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientsToday, setClientsToday] = useState<Client[]>([]);
+
+  useEffect(() => {
+    setClients(listClients());
+    setClientsToday(listClientsForToday());
+  }, []);
+
+  const clientsWithRecurrence = useMemo(
+    () => clients.filter((client) => client.recurrenceDays),
+    [clients]
+  );
+
+  const averageRecurrence = useMemo(() => {
+    if (!clientsWithRecurrence.length) {
+      return 0;
+    }
+
+    const total = clientsWithRecurrence.reduce(
+      (sum, client) => sum + (client.recurrenceDays ?? 0),
+      0
+    );
+
+    return Math.round(total / clientsWithRecurrence.length);
+  }, [clientsWithRecurrence]);
+
+  const activationRate = clients.length
+    ? Math.round((clientsWithRecurrence.length / clients.length) * 100)
+    : 0;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>Visão executiva</Text>
+          <Text style={styles.title}>A saúde da sua carteira em tempo real.</Text>
+          <Text style={styles.subtitle}>
+            Um resumo para entender retenção, previsibilidade e prioridade de contato.
+          </Text>
+        </View>
+
+        <View style={styles.grid}>
+          <InsightCard
+            icon="repeat-outline"
+            label="Recorrência média"
+            value={averageRecurrence ? `${averageRecurrence} dias` : '-'}
+            description="Calculada pelos clientes com histórico suficiente."
+          />
+          <InsightCard
+            icon="pulse-outline"
+            label="Base mapeada"
+            value={`${activationRate}%`}
+            description="Clientes que já possuem padrão de retorno calculado."
+          />
+          <InsightCard
+            icon="chatbubbles-outline"
+            label="Contatos pendentes"
+            value={String(clientsToday.length)}
+            description="Retornos vencidos ou previstos para hoje."
+          />
+        </View>
+
+        <View style={styles.panel}>
+          <View style={styles.panelIcon}>
+            <Ionicons name="bulb-outline" size={22} color={palette.brandDark} />
+          </View>
+          <View style={styles.panelText}>
+            <Text style={styles.panelTitle}>Próximo salto de produto</Text>
+            <Text style={styles.panelDescription}>
+              O app já pode evoluir para filtros por status, máscara de data, perfil do cliente,
+              lembretes automáticos e tela dedicada de agenda. Essa base visual deixa espaço para
+              crescer sem parecer improvisada.
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function InsightCard({
+  icon,
+  label,
+  value,
+  description,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardIcon}>
+        <Ionicons name={icon} size={22} color={palette.green} />
+      </View>
+      <Text style={styles.cardValue}>{value}</Text>
+      <Text style={styles.cardLabel}>{label}</Text>
+      <Text style={styles.cardDescription}>{description}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  safeArea: {
+    flex: 1,
+    backgroundColor: palette.paper,
   },
-  titleContainer: {
+  content: {
+    padding: 20,
+    paddingBottom: 36,
+  },
+  header: {
+    backgroundColor: palette.ink,
+    borderRadius: 24,
+    padding: 22,
+    marginBottom: 16,
+  },
+  eyebrow: {
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: palette.warm,
+    color: palette.brandDark,
+    fontSize: 12,
+    fontWeight: '900',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 24,
+  },
+  title: {
+    color: palette.surface,
+    fontSize: 29,
+    lineHeight: 34,
+    fontWeight: '900',
+  },
+  subtitle: {
+    color: '#E7D8C7',
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 10,
+  },
+  grid: {
+    gap: 12,
+  },
+  card: {
+    backgroundColor: palette.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.line,
+    padding: 18,
+  },
+  cardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.greenSoft,
+    marginBottom: 16,
+  },
+  cardValue: {
+    color: palette.ink,
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  cardLabel: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  cardDescription: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  panel: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 14,
+    backgroundColor: palette.warm,
+    borderRadius: 20,
+    padding: 18,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#F0D4A7',
+  },
+  panelIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF80',
+  },
+  panelText: {
+    flex: 1,
+  },
+  panelTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  panelDescription: {
+    color: palette.brandDark,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
   },
 });

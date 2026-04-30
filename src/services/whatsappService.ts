@@ -26,6 +26,9 @@ export async function openWhatsAppMessage({
   recurrenceDays,
 }: Params) {
   const formattedPhone = formatBrazilianPhone(phone);
+  const recurrenceText = recurrenceDays
+    ? `Costumo ver você por aqui a cada ${recurrenceDays} dias.`
+    : 'Já faz um tempinho desde o seu último corte.';
 
   if (!formattedPhone || formattedPhone.length < 12) {
     Alert.alert(
@@ -35,7 +38,7 @@ export async function openWhatsAppMessage({
     return;
   }
 
-  const message = `Olá ${clientName}, tudo bem? Vi aqui que já está próximo do período do seu corte. Gostaria de agendar um horário?`;
+  const message = `Olá ${clientName}, tudo bem? ${recurrenceText} Quer reservar um horário esta semana?`;
 
   const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
