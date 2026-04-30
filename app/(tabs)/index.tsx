@@ -35,6 +35,11 @@ import {
   calculateAverageRecurrence,
   calculateNextSuggestedVisit,
 } from '@/src/utils/recurrenceUtils';
+import {
+  diffIsoDatesInDays,
+  getLocalIsoDate,
+  parseIsoDateAsLocal,
+} from '@/src/utils/dateUtils';
 
 import { openWhatsAppMessage } from '@/src/services/whatsappService';
 import { Appointment } from '@/src/types/Appointment';
@@ -97,7 +102,7 @@ const palette = {
 };
 
 function getTodayDate() {
-  return new Date().toISOString().split('T')[0];
+  return getLocalIsoDate();
 }
 
 function toBrazilianDate(value: string | null) {
@@ -205,14 +210,14 @@ function isValidBrazilianDate(value: string) {
   }
 
   const [day, month, year] = value.split('/').map(Number);
-  const date = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+  const date = new Date(year, month - 1, day);
 
   return (
     date instanceof Date &&
     !Number.isNaN(date.getTime()) &&
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() + 1 === month &&
-    date.getUTCDate() === day
+    date.getFullYear() === year &&
+    date.getMonth() + 1 === month &&
+    date.getDate() === day
   );
 }
 
@@ -222,7 +227,7 @@ function isFutureBrazilianDate(value: string) {
   }
 
   const isoDate = toIsoDate(value);
-  return new Date(isoDate).getTime() > new Date(getTodayDate()).getTime();
+  return parseIsoDateAsLocal(isoDate).getTime() > parseIsoDateAsLocal(getTodayDate()).getTime();
 }
 
 function formatDate(value: string | null) {
@@ -246,9 +251,7 @@ function getDaysUntil(date: string | null) {
     return null;
   }
 
-  const today = new Date(getTodayDate()).getTime();
-  const target = new Date(date).getTime();
-  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+  return diffIsoDatesInDays(getTodayDate(), date);
 }
 
 function getClientStatus(client: Client) {
@@ -412,6 +415,24 @@ export default function HomeScreen() {
     }
 
     const visitIsoDate = toIsoDate(visitDate);
+    const historyBeforeInsert = getAppointmentsByClient(client.id);
+
+    const appointmentAlreadyExists = historyBeforeInsert.some(
+      (appointment) => appointment.visitDate === visitIsoDate
+    );
+
+    if (appointmentAlreadyExists) {
+      Alert.alert('Atendimento duplicado', 'Esse cliente já possui atendimento nessa data.');
+      return;
+    }
+
+    if (client.lastVisit && diffIsoDatesInDays(client.lastVisit, visitIsoDate) < 0) {
+      Alert.alert(
+        'Data inválida',
+        `A data não pode ser anterior ao último corte (${formatDate(client.lastVisit)}).`
+      );
+      return;
+    }
 
     createAppointment({
       clientId: client.id,
@@ -449,19 +470,6 @@ export default function HomeScreen() {
 
     setDetailsClient(client);
     setDetailsAppointments(history);
-    if (history.length >= 0) {
-      return;
-    }
-
-    if (!history.length) {
-      Alert.alert('Sem histórico ainda');
-      return;
-    }
-
-    Alert.alert(
-      `Histórico de ${client.name}`,
-      history.map((appointment) => formatDate(appointment.visitDate)).join('\n')
-    );
   }
 
   function handleCloseDetails() {

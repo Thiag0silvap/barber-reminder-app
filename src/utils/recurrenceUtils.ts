@@ -1,4 +1,5 @@
 import { Appointment } from '../types/Appointment';
+import { addDaysToIsoDate, diffIsoDatesInDays } from './dateUtils';
 
 export function calculateAverageRecurrence(appointments: Appointment[]) {
   if (appointments.length < 2) {
@@ -12,11 +13,10 @@ export function calculateAverageRecurrence(appointments: Appointment[]) {
   const intervals: number[] = [];
 
   for (let i = 1; i < orderedAppointments.length; i++) {
-    const previousDate = new Date(orderedAppointments[i - 1].visitDate);
-    const currentDate = new Date(orderedAppointments[i].visitDate);
-
-    const diffInMs = currentDate.getTime() - previousDate.getTime();
-    const diffInDays = Math.round(diffInMs / (1000 * 60 * 60 * 24));
+    const diffInDays = diffIsoDatesInDays(
+      orderedAppointments[i - 1].visitDate,
+      orderedAppointments[i].visitDate
+    );
 
     if (diffInDays > 0) {
       intervals.push(diffInDays);
@@ -40,8 +40,5 @@ export function calculateNextSuggestedVisit(
     return null;
   }
 
-  const date = new Date(lastVisit);
-  date.setDate(date.getDate() + recurrenceDays);
-
-  return date.toISOString().split('T')[0];
+  return addDaysToIsoDate(lastVisit, recurrenceDays);
 }

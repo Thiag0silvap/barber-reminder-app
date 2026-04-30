@@ -21,6 +21,7 @@ export default function TabLayout() {
           minHeight: 72,
           paddingTop: 8,
         },
+        tabBarHideOnKeyboard: true,
         tabBarInactiveTintColor: '#8F8982',
         tabBarLabelStyle: {
           fontSize: 12,

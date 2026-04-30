@@ -1,7 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { listClientsForToday } from '../database/clientsRepository';
 import { AppSettings } from '../database/settingsRepository';
 
 const DAILY_REMINDER_ID = 'daily-client-reminder';
@@ -60,16 +59,11 @@ export async function scheduleDailyClientReminder(settings: AppSettings) {
     return false;
   }
 
-  const clientsToday = listClientsForToday();
-  const body = clientsToday.length
-    ? `Você tem ${clientsToday.length} cliente${clientsToday.length === 1 ? '' : 's'} para chamar hoje.`
-    : 'Abra o app e confira se há clientes próximos do retorno.';
-
   await Notifications.scheduleNotificationAsync({
     identifier: DAILY_REMINDER_ID,
     content: {
       title: settings.barbershopName || 'Barber Reminder',
-      body,
+      body: 'Abra o app e confira os clientes que precisam de contato hoje.',
       sound: true,
     },
     trigger: {
