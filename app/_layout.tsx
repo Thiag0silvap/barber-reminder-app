@@ -6,6 +6,13 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { runMigrations } from '@/src/database/migrations';
+import { getAppSettings } from '@/src/database/settingsRepository';
+import {
+  configureNotificationHandler,
+  scheduleDailyClientReminder,
+} from '@/src/services/notificationService';
+
+configureNotificationHandler();
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -16,6 +23,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     runMigrations();
+    scheduleDailyClientReminder(getAppSettings());
   }, []);
 
   return (

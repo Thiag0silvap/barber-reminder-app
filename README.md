@@ -17,6 +17,9 @@ O projeto foi pensado para funcionar sem servidor e sem banco online, usando arm
 - Lista de clientes para chamar hoje.
 - Abertura do WhatsApp com mensagem pronta.
 - Dashboard com indicadores da carteira.
+- Configuração de mensagem padrão do WhatsApp.
+- Lembrete local diário para revisar clientes.
+- Exportação de backup em JSON.
 - Interface mobile com foco em uso rápido no balcão.
 
 ## Stack
@@ -55,6 +58,7 @@ app/
   (tabs)/
     index.tsx       # Agenda, cadastro e registro de atendimentos
     explore.tsx     # Insights da carteira
+    settings.tsx    # Configurações e lembretes
 src/
   database/         # Conexão, migrations e repositories SQLite
   services/         # Integrações, como WhatsApp

@@ -1,5 +1,7 @@
 import { Alert, Linking } from 'react-native';
 
+import { getWhatsappMessageTemplate } from '../database/settingsRepository';
+
 type Params = {
   phone: string;
   clientName: string;
@@ -20,15 +22,30 @@ function formatBrazilianPhone(value: string) {
   return numbers;
 }
 
+function formatRecurrenceText(recurrenceDays: number) {
+  if (!recurrenceDays) {
+    return 'Ainda estou acompanhando seu histórico de cortes.';
+  }
+
+  return recurrenceDays === 1
+    ? 'Seu retorno costuma acontecer a cada 1 dia.'
+    : `Seu retorno costuma acontecer a cada ${recurrenceDays} dias.`;
+}
+
+function buildMessage(clientName: string, recurrenceDays: number) {
+  const template = getWhatsappMessageTemplate();
+
+  return template
+    .replaceAll('{cliente}', clientName)
+    .replaceAll('{recorrencia}', formatRecurrenceText(recurrenceDays));
+}
+
 export async function openWhatsAppMessage({
   phone,
   clientName,
   recurrenceDays,
 }: Params) {
   const formattedPhone = formatBrazilianPhone(phone);
-  const recurrenceText = recurrenceDays
-    ? `Costumo ver você por aqui a cada ${recurrenceDays} dias.`
-    : 'Já faz um tempinho desde o seu último corte.';
 
   if (!formattedPhone || formattedPhone.length < 12) {
     Alert.alert(
@@ -38,8 +55,7 @@ export async function openWhatsAppMessage({
     return;
   }
 
-  const message = `Olá ${clientName}, tudo bem? ${recurrenceText} Quer reservar um horário esta semana?`;
-
+  const message = buildMessage(clientName, recurrenceDays);
   const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
   await Linking.openURL(url);

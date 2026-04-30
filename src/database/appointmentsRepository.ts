@@ -27,6 +27,20 @@ export function getAppointmentsByClient(clientId: number): Appointment[] {
   ) as Appointment[];
 }
 
+export function listAppointments(): Appointment[] {
+  return database.getAllSync(
+    `
+    SELECT
+      id,
+      client_id as clientId,
+      visit_date as visitDate,
+      created_at as createdAt
+    FROM appointments
+    ORDER BY visit_date DESC;
+    `
+  ) as Appointment[];
+}
+
 export function deleteAppointmentsByClient(clientId: number) {
   database.runSync(
     `

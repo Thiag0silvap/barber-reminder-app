@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "barber-reminder-app",
+    "name": "Barber Reminder",
     "slug": "barber-reminder-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#17110B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -35,13 +35,14 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#17110B",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#17110B"
           }
         }
       ],
       "expo-sqlite",
+      "expo-notifications",
       "expo-web-browser"
     ],
     "experiments": {
